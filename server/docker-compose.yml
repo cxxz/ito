@@ -16,9 +16,10 @@ services:
         condition: service_started
     environment:
       NODE_ENV: development
+      DB_HOST: db
 
   db:
-    image: postgres:16
+    image: postgres:17
     container_name: ito-postgres
     restart: always
     environment:

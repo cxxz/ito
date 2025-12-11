@@ -30,7 +30,6 @@ export default function AccountSettingsContent() {
       window.electron.store.set('settings', {})
       window.electron.store.set('main', {})
       window.electron.store.set('onboarding', {})
-      window.electron.store.set('auth', {})
 
       // Clear auth state
       clearAuth()
@@ -51,7 +50,6 @@ export default function AccountSettingsContent() {
       window.electron.store.set('settings', {})
       window.electron.store.set('main', {})
       window.electron.store.set('onboarding', {})
-      window.electron.store.set('auth', {})
 
       // Clear auth state
       clearAuth()

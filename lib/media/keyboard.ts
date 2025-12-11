@@ -46,6 +46,11 @@ export const resetForTesting = () => {
     stopStuckKeyChecker()
     stopHeartbeatChecker()
     lastHeartbeatReceived = Date.now()
+    // Reset double-tap state
+    doubleTapState.lastTapTime = 0
+    doubleTapState.lastKey = null
+    doubleTapState.isRecording = false
+    activeTaps.clear()
   }
 }
 
@@ -106,6 +111,18 @@ let stuckKeyCheckTimer: NodeJS.Timeout | null = null
 // Configuration for stuck key detection
 const STUCK_KEY_TIMEOUT = 5000 // 5 seconds
 const STUCK_KEY_CHECK_INTERVAL = 1000 // Check every 1 second
+
+// Double-tap detection configuration
+const DOUBLE_TAP_THRESHOLD_MS = 400 // Max time between taps to count as double-tap
+const TAP_MAX_HOLD_MS = 300 // Max key hold duration to count as a "tap" (vs a "hold")
+
+// Double-tap detection state
+const doubleTapState = {
+  lastTapTime: 0,
+  lastKey: null as KeyName | null,
+  isRecording: false, // Track if currently in double-tap recording mode
+}
+const activeTaps = new Map<KeyName, number>() // key -> keydown timestamp
 
 // Function to check for and remove stuck keys
 function checkForStuckKeys() {
@@ -174,18 +191,98 @@ function stopStuckKeyChecker() {
   }
 }
 
+/**
+ * Detects double-tap patterns for shortcuts configured with triggerType: 'double-tap'.
+ * Returns true if a double-tap was detected and the recording state should toggle.
+ */
+function handleDoubleTapEvent(
+  event: KeyEvent,
+  shortcut: KeyboardShortcutConfig,
+): boolean {
+  // Only process if this shortcut uses double-tap mode
+  const effectiveTriggerType = shortcut.triggerType || 'hold'
+  if (effectiveTriggerType !== 'double-tap') {
+    return false
+  }
+
+  // Double-tap only works with single-key shortcuts
+  if (shortcut.keys.length !== 1) {
+    return false
+  }
+
+  const normalizedKey = normalizeKey(event.key)
+  const shortcutKey = normalizeLegacyKey(shortcut.keys[0])
+
+  // Check if the key matches the shortcut's key
+  // Also support matching right variant (e.g., control-right matches control-left shortcut)
+  const baseKey = shortcutKey.replace(/-left$|-right$/, '')
+  const eventBaseKey = normalizedKey.replace(/-left$|-right$/, '')
+  if (shortcutKey !== normalizedKey && baseKey !== eventBaseKey) {
+    return false
+  }
+
+  const now = Date.now()
+
+  if (event.type === 'keydown') {
+    // Record the start of a potential tap
+    if (!activeTaps.has(normalizedKey)) {
+      activeTaps.set(normalizedKey, now)
+    }
+    return false // Don't trigger anything on keydown
+  }
+
+  if (event.type === 'keyup') {
+    const keydownTime = activeTaps.get(normalizedKey)
+    activeTaps.delete(normalizedKey)
+
+    if (!keydownTime) {
+      return false
+    }
+
+    const holdDuration = now - keydownTime
+
+    // Check if this was a quick tap (not a hold)
+    if (holdDuration > TAP_MAX_HOLD_MS) {
+      // This was a hold, not a tap - reset double-tap state
+      doubleTapState.lastTapTime = 0
+      doubleTapState.lastKey = null
+      return false
+    }
+
+    // This was a tap - check for double-tap
+    const timeSinceLastTap = now - doubleTapState.lastTapTime
+
+    // Check if this is a double-tap (same base key, within threshold)
+    const lastBaseKey = doubleTapState.lastKey?.replace(/-left$|-right$/, '')
+    if (lastBaseKey === eventBaseKey && timeSinceLastTap < DOUBLE_TAP_THRESHOLD_MS) {
+      // Double-tap detected!
+      doubleTapState.lastTapTime = 0
+      doubleTapState.lastKey = null
+      return true // Trigger the toggle action
+    }
+
+    // First tap or different key - start tracking
+    doubleTapState.lastTapTime = now
+    doubleTapState.lastKey = normalizedKey
+    return false
+  }
+
+  return false
+}
+
 async function handleKeyEventInMain(event: KeyEvent) {
   const { isShortcutGloballyEnabled, keyboardShortcuts } = store.get(
     STORE_KEYS.SETTINGS,
   )
 
   if (!isShortcutGloballyEnabled) {
-    // check to see if we should stop an in-progress recording
+    // Check to see if we should stop an in-progress recording
     if (activeShortcutId !== null) {
       // Shortcut released
       activeShortcutId = null
       console.info('Shortcut DEACTIVATED, stopping recording...')
       itoSessionManager.completeSession()
+      doubleTapState.isRecording = false
     }
     return
   }
@@ -206,10 +303,33 @@ async function handleKeyEventInMain(event: KeyEvent) {
     keyPressTimestamps.delete(normalizedKey)
   }
 
-  // Check if any of the configured shortcuts are currently held
+  // Check for double-tap shortcuts first
+  for (const shortcut of keyboardShortcuts.filter(ks => ks.keys.length > 0)) {
+    const shouldToggle = handleDoubleTapEvent(event, shortcut)
+
+    if (shouldToggle) {
+      if (doubleTapState.isRecording) {
+        // Stop recording
+        console.info('lib Double-tap STOP, completing recording...')
+        doubleTapState.isRecording = false
+        activeShortcutId = null
+        itoSessionManager.completeSession()
+      } else {
+        // Start recording
+        console.info('lib Double-tap START, beginning recording...')
+        doubleTapState.isRecording = true
+        activeShortcutId = shortcut.id
+        await itoSessionManager.startSession(shortcut.mode)
+      }
+      return // Handled by double-tap
+    }
+  }
+
+  // Check if any hold-type shortcuts are currently held
   // Match shortcuts that have exactly the same keys as currently pressed
   const currentlyHeldShortcut = keyboardShortcuts
     .filter(ks => ks.keys.length > 0)
+    .filter(ks => (ks.triggerType || 'hold') === 'hold') // Only check hold shortcuts
     .find(shortcut => {
       // Normalize legacy keys in stored shortcuts
       const normalizedShortcutKeys = shortcut.keys.map(normalizeLegacyKey)
@@ -225,7 +345,7 @@ async function handleKeyEventInMain(event: KeyEvent) {
       return exactMatch
     })
 
-  // Handle shortcut activation and mode changes
+  // Handle shortcut activation and mode changes for hold-type shortcuts
   if (currentlyHeldShortcut) {
     if (activeShortcutId === null) {
       // Starting a new session
@@ -240,13 +360,19 @@ async function handleKeyEventInMain(event: KeyEvent) {
       )
       itoSessionManager.setMode(currentlyHeldShortcut.mode)
     }
-  } else if (!currentlyHeldShortcut) {
-    // No shortcut detected - cancel pending activation or deactivate active shortcut
+  } else if (!currentlyHeldShortcut && !doubleTapState.isRecording) {
+    // No shortcut detected and not in double-tap recording mode
     if (activeShortcutId !== null) {
-      // Shortcut released - deactivate immediately (no debounce on release)
-      activeShortcutId = null
-      console.info('lib Shortcut DEACTIVATED, stopping recording...')
-      itoSessionManager.completeSession()
+      // Check if active shortcut is a hold type before deactivating
+      const activeShortcut = keyboardShortcuts.find(
+        ks => ks.id === activeShortcutId,
+      )
+      if (activeShortcut && (activeShortcut.triggerType || 'hold') === 'hold') {
+        // Shortcut released - deactivate immediately (no debounce on release)
+        activeShortcutId = null
+        console.info('lib Shortcut DEACTIVATED, stopping recording...')
+        itoSessionManager.completeSession()
+      }
     }
   }
 }

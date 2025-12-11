@@ -2,15 +2,18 @@ import crypto from 'crypto'
 import { STORE_KEYS } from '../constants/store-keys'
 import type { LlmSettings } from '@/app/store/useAdvancedSettingsStore'
 import { ItoMode } from '@/app/generated/ito_pb.js'
-import { ITO_MODE_SHORTCUT_DEFAULTS } from '../constants/keyboard-defaults.js'
-import { KeyName, normalizeLegacyKey } from '../types/keyboard.js'
+import {
+  ITO_MODE_SHORTCUT_DEFAULTS,
+  ITO_MODE_TRIGGER_DEFAULTS,
+} from '../constants/keyboard-defaults.js'
+import { KeyName, normalizeLegacyKey, TriggerType } from '../types/keyboard.js'
 import { KeyValueStore } from './sqlite/repo'
-import { resolveDefaultKeys } from '../utils/settings.js'
 
 export interface KeyboardShortcutConfig {
   id: string
   keys: KeyName[]
   mode: ItoMode
+  triggerType?: TriggerType // Optional for backward compatibility, defaults to 'hold'
 }
 
 interface MainStore {
@@ -130,6 +133,7 @@ export const defaultValues: AppStore = {
           normalizeLegacyKey,
         ) as KeyName[],
         mode: ItoMode.TRANSCRIBE,
+        triggerType: ITO_MODE_TRIGGER_DEFAULTS[ItoMode.TRANSCRIBE],
       },
       {
         id: crypto.randomUUID(),
@@ -137,6 +141,7 @@ export const defaultValues: AppStore = {
           normalizeLegacyKey,
         ) as KeyName[],
         mode: ItoMode.EDIT,
+        triggerType: ITO_MODE_TRIGGER_DEFAULTS[ItoMode.EDIT],
       },
     ],
     firstName: '',
@@ -281,6 +286,24 @@ const migrations: Migration[] = [
       if ('keyboardShortcut' in settings) {
         delete settings.keyboardShortcut
         s.set('settings', settings)
+      }
+    },
+  },
+  {
+    id: '2025-12-11-add-trigger-type-defaults',
+    run: s => {
+      const settings: any = s.get('settings') || {}
+      const shortcuts = settings.keyboardShortcuts
+
+      if (Array.isArray(shortcuts)) {
+        const updatedShortcuts = shortcuts.map((shortcut: any) => {
+          // Existing users keep hold mode for backward compatibility
+          if (!shortcut.triggerType) {
+            return { ...shortcut, triggerType: 'hold' }
+          }
+          return shortcut
+        })
+        s.set('settings.keyboardShortcuts', updatedShortcuts)
       }
     },
   },

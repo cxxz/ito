@@ -1,14 +1,21 @@
 import { ItoMode } from '@/app/generated/ito_pb'
+import type { TriggerType } from '../types/keyboard'
 
 // Platform-specific keyboard shortcut defaults
 export const ITO_MODE_SHORTCUT_DEFAULTS_MAC = {
-  [ItoMode.TRANSCRIBE]: ['fn'],
+  [ItoMode.TRANSCRIBE]: ['control-left'],
   [ItoMode.EDIT]: ['control-left', 'fn'],
 }
 
 export const ITO_MODE_SHORTCUT_DEFAULTS_WIN = {
-  [ItoMode.TRANSCRIBE]: ['control-left', 'command-left'],
+  [ItoMode.TRANSCRIBE]: ['control-left'],
   [ItoMode.EDIT]: ['option-left', 'control-left'],
+}
+
+// Default trigger types for each mode
+export const ITO_MODE_TRIGGER_DEFAULTS: Record<ItoMode, TriggerType> = {
+  [ItoMode.TRANSCRIBE]: 'double-tap',
+  [ItoMode.EDIT]: 'hold',
 }
 
 // Helper to detect platform - works in both main and renderer process

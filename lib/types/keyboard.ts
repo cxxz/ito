@@ -147,6 +147,9 @@ export interface KeyDisplayInfo {
 }
 
 // Helper function to get display info for a key
+// Trigger type for keyboard shortcuts
+export type TriggerType = 'hold' | 'double-tap'
+
 export function getKeyDisplayInfo(
   keyName: KeyName,
   platform: 'darwin' | 'win32' = 'darwin',

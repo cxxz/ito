@@ -15,7 +15,7 @@ import {
   validateShortcutForDuplicate,
   isReservedCombination,
 } from '../utils/keyboard'
-import { KeyName } from '@/lib/types/keyboard'
+import { KeyName, TriggerType } from '@/lib/types/keyboard'
 
 interface SettingsState {
   shareAnalytics: boolean
@@ -41,6 +41,10 @@ interface SettingsState {
     shortcutId: string,
     keys: KeyName[],
   ) => Promise<ShortcutResult>
+  updateShortcutTriggerType: (
+    shortcutId: string,
+    triggerType: TriggerType,
+  ) => void
 }
 
 type SettingCategory = 'general' | 'audio&mic' | 'keyboard' | 'account'
@@ -305,6 +309,41 @@ export const useSettingsStore = create<SettingsState>(set => {
       syncToStore(partialState)
 
       return { success: true }
+    },
+    updateShortcutTriggerType: (
+      shortcutId: string,
+      triggerType: TriggerType,
+    ) => {
+      const currentShortcuts = useSettingsStore.getState()
+        .keyboardShortcuts as KeyboardShortcutConfig[]
+      const shortcut = currentShortcuts.find(ks => ks.id === shortcutId)
+
+      if (!shortcut) {
+        return
+      }
+
+      const updatedShortcuts = currentShortcuts.map(ks =>
+        ks.id === shortcutId ? { ...ks, triggerType } : ks,
+      )
+      const partialState = {
+        keyboardShortcuts: updatedShortcuts,
+      }
+
+      // Track keyboard shortcut trigger type change
+      analytics.trackSettings(ANALYTICS_EVENTS.KEYBOARD_SHORTCUTS_CHANGED, {
+        setting_name: 'triggerType',
+        old_value: shortcut.triggerType || 'hold',
+        new_value: triggerType,
+        setting_category: 'input',
+      })
+
+      // Update user properties
+      analytics.updateUserProperties({
+        keyboard_shortcuts: updatedShortcuts.map(ks => JSON.stringify(ks)),
+      })
+
+      set(partialState)
+      syncToStore(partialState)
     },
   }
 })
