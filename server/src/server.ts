@@ -71,7 +71,7 @@ export const startServer = async () => {
   })
 
   // Start the server
-  const rpcPort = 3000
+  const rpcPort = Number(process.env.PORT) || 3003
   const host = '0.0.0.0'
 
   try {

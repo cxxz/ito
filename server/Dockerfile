@@ -20,7 +20,7 @@ RUN bun run proto:gen:server
 RUN bun build src/index.ts --outdir dist --target bun
 
 # Expose the gRPC port
-EXPOSE 3000
+EXPOSE 3003
 
 
 # Run the gRPC server with Bun
