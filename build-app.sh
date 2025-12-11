@@ -107,17 +107,15 @@ build_native_modules() {
     
     case $platform in
         "mac")
-            # Build for both architectures for release
+            # Build for arm64 only
             ./build-binaries.sh --mac
-            ./build-binaries.sh --mac --x64
             ;;
         "windows")
             ./build-binaries.sh --windows
             ;;
         "all")
-            # Build for all platforms and architectures for release
+            # Build for all platforms (arm64 only for mac)
             ./build-binaries.sh --mac
-            ./build-binaries.sh --mac --x64
             ./build-binaries.sh --windows
             ;;
         *)
@@ -171,7 +169,7 @@ create_dmg() {
       print_info "Set VITE_ITO_ENV=${VITE_ITO_ENV} for build-time embedding"
     fi
     bun run electron-vite build
-    bunx electron-builder --config electron-builder.config.js --mac dmg zip --universal --publish=never
+    bunx electron-builder --config electron-builder.config.js --mac dmg zip --arm64 --publish=never
     
     print_status "macOS DMG installer created successfully!"
     
