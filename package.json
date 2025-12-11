@@ -64,12 +64,12 @@
     ]
   },
   "dependencies": {
-    "@auth0/auth0-react": "^2.3.0",
+    "@auth0/auth0-react": "^2.10.0",
     "@bufbuild/protobuf": "^2.6.0",
     "@connectrpc/connect": "^2.0.2",
     "@connectrpc/connect-node": "^2.0.2",
     "@electron-toolkit/preload": "^3.0.2",
-    "@electron-toolkit/utils": "^4.0.0",
+    "@electron-toolkit/utils": "3",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/lab": "^7.0.0-beta.13",
@@ -84,8 +84,8 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.5",
     "@radix-ui/react-tooltip": "^1.2.7",
-    "@sentry/electron": "^6.9.0",
-    "@sentry/vite-plugin": "^4.1.0",
+    "@sentry/electron": "^7.5.0",
+    "@sentry/vite-plugin": "^4.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "compromise": "^14.14.4",
@@ -96,7 +96,7 @@
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.511.0",
     "node-machine-id": "^1.1.12",
-    "posthog-js": "^1.269.1",
+    "posthog-js": "^1.304.0",
     "react-router-dom": "^7.6.2",
     "sqlite3": "^5.1.7",
     "tailwind-merge": "^3.3.0",
@@ -121,9 +121,9 @@
     "@types/sinonjs__fake-timers": "^8.1.5",
     "@vitejs/plugin-react": "^4.5.0",
     "bun-types": "^1.2.19",
-    "electron": "^37.2.6",
+    "electron": "^37.10.3",
     "electron-builder": "^26.0.20",
-    "electron-vite": "^3.1.0",
+    "electron-vite": "5",
     "eslint": "^9.28.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -142,5 +142,16 @@
     "typescript-eslint": "^8.33.0",
     "vite": "^6.3.5"
   },
-  "packageManager": "yarn@1.22.19+sha512.ff4579ab459bb25aa7c0ff75b62acebe576f6084b36aa842971cf250a5d8c6cd3bc9420b22ce63c7f93a0857bc6ef29291db39c3e7a23aab5adfd5a4dd6c5d71"
+  "packageManager": "yarn@1.22.19+sha512.ff4579ab459bb25aa7c0ff75b62acebe576f6084b36aa842971cf250a5d8c6cd3bc9420b22ce63c7f93a0857bc6ef29291db39c3e7a23aab5adfd5a4dd6c5d71",
+  "trustedDependencies": [
+    "@sentry/cli",
+    "@tailwindcss/oxide",
+    "browser-tabs-lock",
+    "core-js",
+    "electron",
+    "electron-winstaller",
+    "esbuild",
+    "protobufjs",
+    "sqlite3"
+  ]
 }

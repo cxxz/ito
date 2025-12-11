@@ -15,8 +15,6 @@ import {
 } from '../../generated/ito_pb.js'
 import { create } from '@bufbuild/protobuf'
 import type { HandlerContext } from '@connectrpc/connect'
-import { getStorageClient } from '../../clients/s3storageClient.js'
-import { createAudioKey } from '../../constants/storage.js'
 import { createInteractionWithAudio } from './interactionHelpers.js'
 import {
   DictionaryRepository,
@@ -48,19 +46,7 @@ function dbToNotePb(dbNote: DbNote): Note {
   })
 }
 
-function dbToInteractionPb(
-  dbInteraction: DbInteraction,
-  rawAudio?: Buffer,
-): Interaction {
-  let rawAudioDb: Uint8Array | undefined
-  if (rawAudio) {
-    rawAudioDb = new Uint8Array(rawAudio)
-  } else if (dbInteraction.raw_audio) {
-    rawAudioDb = new Uint8Array(dbInteraction.raw_audio)
-  } else {
-    rawAudioDb = undefined
-  }
-
+function dbToInteractionPb(dbInteraction: DbInteraction): Interaction {
   return create(InteractionSchema, {
     id: dbInteraction.id,
     userId: dbInteraction.user_id ?? '',
@@ -71,8 +57,6 @@ function dbToInteractionPb(
     llmOutput: dbInteraction.llm_output
       ? JSON.stringify(dbInteraction.llm_output)
       : '',
-    rawAudio: rawAudioDb,
-    rawAudioId: dbInteraction.raw_audio_id ?? '',
     durationMs: dbInteraction.duration_ms ?? 0,
     createdAt: dbInteraction.created_at.toISOString(),
     updatedAt: dbInteraction.updated_at.toISOString(),
@@ -195,13 +179,7 @@ export default (router: ConnectRouter) => {
       }
 
       try {
-        // Convert raw audio from Uint8Array to Buffer if provided
-        const rawAudio =
-          request.rawAudio && request.rawAudio.length > 0
-            ? Buffer.from(request.rawAudio)
-            : undefined
-
-        // Use shared helper to create interaction and upload audio
+        // Use shared helper to create interaction
         const newInteraction = await createInteractionWithAudio({
           id: request.id,
           userId,
@@ -209,7 +187,6 @@ export default (router: ConnectRouter) => {
           asrOutput: request.asrOutput,
           llmOutput: request.llmOutput,
           durationMs: request.durationMs,
-          rawAudio,
         })
 
         return dbToInteractionPb(newInteraction)
@@ -223,28 +200,6 @@ export default (router: ConnectRouter) => {
       const interaction = await InteractionsRepository.findById(request.id)
       if (!interaction) {
         throw new ConnectError('Interaction not found', Code.NotFound)
-      }
-
-      // If audio is stored in S3, fetch it
-      if (interaction.raw_audio_id && !interaction.raw_audio) {
-        try {
-          const storageClient = getStorageClient()
-          const userId = interaction.user_id || 'unknown'
-          const audioKey = createAudioKey(userId, interaction.raw_audio_id)
-
-          const { body } = await storageClient.getObject(audioKey)
-          if (body) {
-            // Convert stream to buffer
-            const chunks: Uint8Array[] = []
-            for await (const chunk of body) {
-              chunks.push(chunk as Uint8Array)
-            }
-            interaction.raw_audio = Buffer.concat(chunks)
-          }
-        } catch (error) {
-          console.error('Failed to fetch audio from S3:', error)
-          // Continue without audio if S3 fetch fails
-        }
       }
 
       return dbToInteractionPb(interaction)
@@ -264,48 +219,8 @@ export default (router: ConnectRouter) => {
         since,
       )
 
-      // Create a map to store audio buffers by interaction ID
-      const rawAudioMap = new Map<string, Buffer>()
-
-      // Fetch all audio files from S3 in parallel
-      const storageClient = getStorageClient()
-      const audioFetchPromises = interactions
-        .filter(
-          interaction => interaction.raw_audio_id && !interaction.raw_audio,
-        )
-        .map(async interaction => {
-          try {
-            const audioKey = createAudioKey(
-              interaction.user_id || userId,
-              interaction.raw_audio_id!,
-            )
-            const { body } = await storageClient.getObject(audioKey)
-            if (body) {
-              // Convert stream to buffer
-              const chunks: Uint8Array[] = []
-              for await (const chunk of body) {
-                chunks.push(chunk as Uint8Array)
-              }
-              const buffer = Buffer.concat(chunks)
-              rawAudioMap.set(interaction.id, buffer)
-            }
-          } catch (error) {
-            console.error(
-              `Failed to fetch audio for interaction ${interaction.id}:`,
-              error,
-            )
-          }
-        })
-
-      // Wait for all audio fetches to complete
-      await Promise.all(audioFetchPromises)
-
       return {
-        interactions: interactions.map(dbInteraction => {
-          // Use S3 audio if available
-          const audioBuffer = rawAudioMap.get(dbInteraction.id) || undefined
-          return dbToInteractionPb(dbInteraction, audioBuffer)
-        }),
+        interactions: interactions.map(dbToInteractionPb),
       }
     },
 
@@ -374,11 +289,7 @@ export default (router: ConnectRouter) => {
 
       console.log(`Deleting all data for authenticated user: ${userId}`)
 
-      const storageClient = getStorageClient()
-      const audioPrefix = `raw-audio/${userId}/`
-
       await Promise.all([
-        storageClient.hardDeletePrefix(audioPrefix),
         NotesRepository.hardDeleteAllUserData(userId),
         InteractionsRepository.hardDeleteAllUserData(userId),
         DictionaryRepository.hardDeleteAllUserData(userId),

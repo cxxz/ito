@@ -9,11 +9,14 @@ if (!stage) {
   throw new Error('ITO_ENV or VITE_ITO_ENV must be set to dev or prod')
 }
 
-const userDataDir = path.join(app.getPath('appData'), `Ito-${stage}`)
-app.setPath('userData', userDataDir)
+// Guard against electron.app being undefined (can happen if module is loaded in wrong context)
+if (app !== undefined) {
+  const userDataDir = path.join(app.getPath('appData'), `Ito-${stage}`)
+  app.setPath('userData', userDataDir)
 
-if (stage !== 'prod') {
-  app.setName(`Ito (${stage})`)
+  if (stage !== 'prod') {
+    app.setName(`Ito (${stage})`)
+  }
 }
 
 export const ITO_ENV = stage

@@ -163,7 +163,11 @@ export const defaultValues: AppStore = {
   openMic: false,
   selectedAudioInput: null,
   interactionSounds: false,
-  userProfile: null,
+  // Self-hosted mode: always have a default user profile
+  userProfile: {
+    id: 'self-hosted',
+    provider: 'self-hosted',
+  },
   idToken: null,
   accessToken: null,
   appliedMigrations: [],

@@ -1,5 +1,4 @@
 import sqlite3 from 'sqlite3'
-import { app } from 'electron'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { INITIAL_SCHEMA } from './schema'
@@ -7,7 +6,19 @@ import { MIGRATIONS, Migration } from './migrations'
 import { run, exec, get, all } from './utils'
 
 const DB_FILE = 'ito.db'
-const dbPath = path.join(app.getPath('userData'), DB_FILE)
+
+// Lazy-load electron to avoid module load timing issues
+const getDbPath = (): string => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { app } = require('electron')
+  return path.join(app.getPath('userData'), DB_FILE)
+}
+
+const quitApp = (): void => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { app } = require('electron')
+  app.quit()
+}
 
 let db: sqlite3.Database
 
@@ -126,7 +137,7 @@ const revertLastMigration = async () => {
     console.info(
       `Migration ${migrationToRevert.id} reverted successfully. App will quit, please relaunch.`,
     )
-    app.quit()
+    quitApp()
   } catch (err) {
     console.error(`Failed to revert migration ${migrationToRevert.id}:`, err)
     await exec('ROLLBACK;')
@@ -145,6 +156,7 @@ const wipeDatabase = async () => {
     console.info('Database connection closed.')
   }
 
+  const dbPath = getDbPath()
   try {
     await fs.unlink(dbPath)
     console.info('Database file deleted.')
@@ -156,7 +168,7 @@ const wipeDatabase = async () => {
   }
 
   console.info('Database wiped. Application will now quit, please relaunch.')
-  app.quit()
+  quitApp()
 }
 
 const deleteUserData = async (userId: string) => {
@@ -201,6 +213,7 @@ const deleteCompleteUserData = async (userId: string) => {
 }
 
 const initializeDatabase = (): Promise<void> => {
+  const dbPath = getDbPath()
   return new Promise((resolve, reject) => {
     db = new sqlite3.Database(dbPath, err => {
       if (err) {

@@ -61,7 +61,6 @@ fn prevent_app_nap() -> id {
 
         let activity: id = msg_send![process_info, beginActivityWithOptions:options reason:reason];
 
-        eprintln!("macOS App Nap prevention enabled for keyboard listener process");
         activity
     }
 }
@@ -115,7 +114,6 @@ fn handle_command(command: Command) {
     match command {
         Command::RegisterHotkeys { hotkeys } => unsafe {
             REGISTERED_HOTKEYS = hotkeys.clone();
-            eprintln!("Registered {} hotkeys", REGISTERED_HOTKEYS.len());
         },
     }
     io::stdout().flush().unwrap();

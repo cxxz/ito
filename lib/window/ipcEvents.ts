@@ -19,16 +19,7 @@ import {
   registerAllHotkeys,
 } from '../media/keyboard'
 import { getPillWindow, mainWindow } from '../main/app'
-import {
-  generateNewAuthState,
-  exchangeAuthCode,
-  handleLogin,
-  handleLogout,
-  ensureValidTokens,
-} from '../auth/events'
 import { KeyValueStore } from '../main/sqlite/repo'
-import { machineId } from 'node-machine-id'
-import { Auth0Config, Auth0Connections } from '../auth/config'
 import {
   NotesTable,
   DictionaryTable,
@@ -44,7 +35,6 @@ import {
   hasSelectedText,
 } from '../media/selected-text-reader'
 import { IPC_EVENTS } from '../types/ipc'
-import { itoHttpClient } from '../clients/itoHttpClient'
 
 const handleIPC = (channel: string, handler: (...args: any[]) => any) => {
   ipcMain.handle(channel, handler)
@@ -177,54 +167,11 @@ export function registerIPC() {
     },
   )
 
-  // Auth
-  handleIPC('generate-new-auth-state', () => generateNewAuthState())
-  handleIPC('exchange-auth-code', async (_e, { authCode, state, config }) =>
-    exchangeAuthCode(_e, { authCode, state, config }),
-  )
-  handleIPC('logout', () => handleLogout())
-  handleIPC(
-    'notify-login-success',
-    async (_e, { profile, idToken, accessToken }) => {
-      handleLogin(profile, idToken, accessToken)
-    },
-  )
-
-  // Start trial when onboarding completes
-  handleIPC('start-trial-after-onboarding', async () => {
-    const result = await itoHttpClient.post('/trial/start', undefined, {
-      requireAuth: true,
-    })
-
-    if (result.success) {
-      console.log('[IPC] trial start succeeded')
-      // Notify renderer that trial started so it can refresh billing state
-      if (
-        mainWindow &&
-        !mainWindow.isDestroyed() &&
-        !mainWindow.webContents.isDestroyed()
-      ) {
-        mainWindow.webContents.send('trial-started')
-      }
-    } else {
-      console.error('[IPC] trial start failed:', result.error)
-    }
-
-    return result
-  })
-
-  // Token refresh handler
-  handleIPC('refresh-tokens', async () => {
-    try {
-      const result = await ensureValidTokens(Auth0Config)
-      return result
-    } catch (error) {
-      console.error('Manual token refresh failed:', error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }
-    }
+  // Self-hosted mode: simplified auth handlers (no-op for most)
+  handleIPC('logout', () => {
+    // In self-hosted mode, just clear local stores
+    store.set(STORE_KEYS.AUTH, { isSelfHosted: true })
+    console.log('[IPC] Self-hosted logout - cleared local auth state')
   })
 
   // Onboarding state (per user)
@@ -321,196 +268,7 @@ export function registerIPC() {
       shell.openExternal(mailtoUrl)
     }
   })
-  // Auth0 DB signup proxy (avoids CORS issues from custom schemes)
-  handleIPC('auth0-db-signup', async (_e, { email, password, name }) => {
-    try {
-      const url = `https://${Auth0Config.domain}/dbconnections/signup`
-      const payload: any = {
-        client_id: Auth0Config.clientId,
-        email,
-        password,
-        name,
-        connection: Auth0Connections.database,
-      }
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      let data: any
-      try {
-        data = await res.json()
-      } catch {
-        data = undefined
-      }
-      if (!res.ok) {
-        const message =
-          data?.description ||
-          data?.error ||
-          `Auth0 signup failed (${res.status})`
-        return { success: false, error: message, status: res.status }
-      }
-      console.log('[IPC] auth0-db-signup response', res.status, data)
-      return { success: true, data }
-    } catch (error: any) {
-      return { success: false, error: error?.message || 'Network error' }
-    }
-  })
-
-  // Auth0 DB login via Password Realm (Resource Owner Password) grant
-  handleIPC('auth0-db-login', async (_e, { email, password }) => {
-    try {
-      if (!email || !password) {
-        return { success: false, error: 'Missing email or password' }
-      }
-      const url = `https://${Auth0Config.domain}/oauth/token`
-      const payload: any = {
-        grant_type: 'http://auth0.com/oauth/grant-type/password-realm',
-        client_id: Auth0Config.clientId,
-        username: email,
-        password,
-        realm: Auth0Connections.database,
-        scope: Auth0Config.scope,
-      }
-      if (Auth0Config.audience) {
-        payload.audience = Auth0Config.audience
-      }
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      let data: any
-      try {
-        data = await res.json()
-      } catch {
-        data = undefined
-      }
-      if (!res.ok) {
-        const message =
-          data?.error_description ||
-          data?.error ||
-          `Auth0 login failed (${res.status})`
-        return { success: false, error: message, status: res.status }
-      }
-
-      return {
-        success: true,
-        tokens: {
-          id_token: data?.id_token || null,
-          access_token: data?.access_token || null,
-          refresh_token: data?.refresh_token || null,
-          scope: data?.scope || null,
-          expires_in: data?.expires_in || null,
-          token_type: data?.token_type || null,
-        },
-      }
-    } catch (error: any) {
-      return { success: false, error: error?.message || 'Network error' }
-    }
-  })
-
-  // Send verification email via server proxy
-  handleIPC('auth0-send-verification', async (_e, { dbUserId }) => {
-    if (!dbUserId) return { success: false, error: 'Missing user identifier' }
-    return itoHttpClient.post('/auth0/send-verification', {
-      dbUserId,
-      clientId: Auth0Config.clientId,
-    })
-  })
-
-  // Send password reset email via server proxy
-  handleIPC('auth0-reset-password', async (_e, { email }) => {
-    if (!email) return { success: false, error: 'Missing email' }
-    return itoHttpClient.post('/auth0/reset-password', {
-      email,
-      connection: Auth0Connections.database,
-    })
-  })
-
-  // Check if email exists for db signup and whether it's verified (via server proxy)
-  handleIPC('auth0-check-email', async (_e, { email }) => {
-    if (!email) return { success: false, error: 'Missing email' }
-    return itoHttpClient.get(
-      `/auth0/users-by-email?email=${encodeURIComponent(email)}`,
-    )
-  })
-
-  // Trial routes proxy
-  handleIPC('trial:complete', async () => {
-    return itoHttpClient.post('/trial/complete')
-  })
-
-  // Billing routes proxy
-  handleIPC('billing:create-checkout-session', async () => {
-    return itoHttpClient.post('/billing/checkout')
-  })
-
-  handleIPC(
-    'billing:confirm-session',
-    async (_e, { sessionId }: { sessionId: string }) => {
-      return itoHttpClient.post('/billing/confirm', { session_id: sessionId })
-    },
-  )
-
-  handleIPC('billing:status', async () => {
-    return itoHttpClient.get('/billing/status')
-  })
-
-  handleIPC('billing:cancel-subscription', async () => {
-    return itoHttpClient.post('/billing/cancel')
-  })
-
-  handleIPC('billing:reactivate-subscription', async () => {
-    return itoHttpClient.post('/billing/reactivate')
-  })
-  handleIPC('open-auth-window', async (_e, { url, redirectUri }) => {
-    try {
-      if (!url || !redirectUri)
-        return { success: false, error: 'Missing url or redirectUri' }
-
-      const win = new BrowserWindow({
-        parent: mainWindow ?? undefined,
-        modal: true,
-        width: 480,
-        height: 720,
-        show: true,
-        autoHideMenuBar: true,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          sandbox: true,
-        },
-      })
-
-      const maybeHandleRedirect = (event: Electron.Event, navUrl: string) => {
-        try {
-          if (!navUrl || !navUrl.startsWith(redirectUri)) return
-          event.preventDefault()
-          const u = new URL(navUrl)
-          const code = u.searchParams.get('code') || ''
-          const state = u.searchParams.get('state') || ''
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('auth-code-received', code, state)
-          }
-          if (!win.isDestroyed()) win.close()
-        } catch (err) {
-          console.error('[IPC] open-auth-window redirect parse error:', err)
-        }
-      }
-
-      win.webContents.on('will-redirect', maybeHandleRedirect)
-      win.webContents.on('will-navigate', maybeHandleRedirect)
-
-      await win.loadURL(url)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[IPC] open-auth-window error:', error)
-      return { success: false, error: error?.message || 'Unknown error' }
-    }
-  })
   handleIPC('get-native-audio-devices', async () => {
     console.log(
       '[IPC] Received get-native-audio-devices, calling requestDeviceListPromise...',
@@ -615,7 +373,7 @@ export function registerIPC() {
       if (response.ok) {
         const text = await response.text()
         const isValidResponse = text.includes(
-          'Welcome to the Ito Connect RPC server!',
+          'Welcome to the Ito Connect RPC server',
         )
 
         return {
@@ -689,40 +447,6 @@ export function registerIPC() {
   ipcMain.on('stop-native-recording-test', () => {
     console.log('IPC: Received stop-native-recording-test.')
     audioRecorderService.stopRecording()
-  })
-
-  // Analytics Device ID storage - using machine ID
-  handleIPC('analytics:get-device-id', async () => {
-    try {
-      // First try to get cached device ID from SQLite
-      let deviceId = await KeyValueStore.get('analytics_device_id')
-
-      if (!deviceId) {
-        // Generate machine-specific ID if none exists
-        deviceId = await machineId()
-        await KeyValueStore.set('analytics_device_id', deviceId)
-        console.log(
-          '[Analytics] Generated new machine-based device ID:',
-          deviceId,
-        )
-      }
-
-      return deviceId
-    } catch (error) {
-      log.error('[Analytics] Failed to get/generate device ID:', error)
-      // Fallback to basic machine id without caching
-      try {
-        return await machineId()
-      } catch (fallbackError) {
-        log.error('[Analytics] Machine ID fallback failed:', fallbackError)
-        return undefined
-      }
-    }
-  })
-
-  // Resolve and clear install link token
-  handleIPC('analytics:resolve-install-token', async () => {
-    return itoHttpClient.get('/link/resolve')
   })
 
   // Logs management
@@ -888,43 +612,43 @@ export const registerWindowIPC = (mainWindow: BrowserWindow) => {
     ipcMain.removeHandler(`check-accessibility-permission-${mainWindow.id}`)
     ipcMain.removeHandler(`check-microphone-permission-${mainWindow.id}`)
   })
-}
 
-// Forwards volume data from the main window to the pill window
-ipcMain.on(IPC_EVENTS.VOLUME_UPDATE, (_event, volume: number) => {
-  getPillWindow()?.webContents.send(IPC_EVENTS.VOLUME_UPDATE, volume)
-})
+  // Forwards volume data from the main window to the pill window
+  ipcMain.on(IPC_EVENTS.VOLUME_UPDATE, (_event, volume: number) => {
+    getPillWindow()?.webContents.send(IPC_EVENTS.VOLUME_UPDATE, volume)
+  })
 
-// Forwards settings updates from the main window to the pill window
-ipcMain.on(IPC_EVENTS.SETTINGS_UPDATE, (_event, settings: any) => {
-  getPillWindow()?.webContents.send(IPC_EVENTS.SETTINGS_UPDATE, settings)
+  // Forwards settings updates from the main window to the pill window
+  ipcMain.on(IPC_EVENTS.SETTINGS_UPDATE, (_event, settings: any) => {
+    getPillWindow()?.webContents.send(IPC_EVENTS.SETTINGS_UPDATE, settings)
 
-  // If microphone selection changed, ensure audio config is set
-  if (settings && typeof settings.microphoneDeviceId === 'string') {
-    // Ask the recorder for the effective output config for the selected mic
-    voiceInputService.handleMicrophoneChanged(settings.microphoneDeviceId)
-  }
-})
-
-// Persist onboarding updates per-user and forward to the pill window
-ipcMain.on(IPC_EVENTS.ONBOARDING_UPDATE, async (_event, onboarding: any) => {
-  try {
-    const userId = getCurrentUserId()
-    if (userId && onboarding) {
-      const payload = {
-        onboardingStep: onboarding.onboardingStep,
-        onboardingCompleted: onboarding.onboardingCompleted,
-      }
-      await KeyValueStore.set(`onboarding:${userId}`, JSON.stringify(payload))
+    // If microphone selection changed, ensure audio config is set
+    if (settings && typeof settings.microphoneDeviceId === 'string') {
+      // Ask the recorder for the effective output config for the selected mic
+      voiceInputService.handleMicrophoneChanged(settings.microphoneDeviceId)
     }
-  } catch (error) {
-    log.error('[IPC] Failed to persist onboarding update:', error)
-  }
+  })
 
-  getPillWindow()?.webContents.send(IPC_EVENTS.ONBOARDING_UPDATE, onboarding)
-})
+  // Persist onboarding updates per-user and forward to the pill window
+  ipcMain.on(IPC_EVENTS.ONBOARDING_UPDATE, async (_event, onboarding: any) => {
+    try {
+      const userId = getCurrentUserId()
+      if (userId && onboarding) {
+        const payload = {
+          onboardingStep: onboarding.onboardingStep,
+          onboardingCompleted: onboarding.onboardingCompleted,
+        }
+        await KeyValueStore.set(`onboarding:${userId}`, JSON.stringify(payload))
+      }
+    } catch (error) {
+      log.error('[IPC] Failed to persist onboarding update:', error)
+    }
 
-// Forwards user authentication updates from the main window to the pill window
-ipcMain.on(IPC_EVENTS.USER_AUTH_UPDATE, (_event, authUser: any) => {
-  getPillWindow()?.webContents.send(IPC_EVENTS.USER_AUTH_UPDATE, authUser)
-})
+    getPillWindow()?.webContents.send(IPC_EVENTS.ONBOARDING_UPDATE, onboarding)
+  })
+
+  // Forwards user authentication updates from the main window to the pill window
+  ipcMain.on(IPC_EVENTS.USER_AUTH_UPDATE, (_event, authUser: any) => {
+    getPillWindow()?.webContents.send(IPC_EVENTS.USER_AUTH_UPDATE, authUser)
+  })
+}

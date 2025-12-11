@@ -29,7 +29,6 @@ import { getKeyDisplay } from '@/app/utils/keyboard'
 import { createStereo48kWavFromMonoPCM } from '@/app/utils/audioUtils'
 import { KeyName } from '@/lib/types/keyboard'
 import { usePlatform } from '@/app/hooks/usePlatform'
-import { BillingModals } from './BillingModals'
 import { calculateAllStats, InteractionStats } from '@/app/utils/userMetrics'
 
 const StatCard = ({
@@ -660,8 +659,6 @@ export default function HomeContent() {
           )
         )}
       </div>
-
-      <BillingModals />
     </div>
   )
 }

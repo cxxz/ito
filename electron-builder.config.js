@@ -20,7 +20,38 @@ const getWindowsResources = () =>
   }))
 
 const stage = process.env.ITO_ENV || 'prod'
+
+// For non-prod builds, ad-hoc sign the entire app bundle after packaging
+// This ensures all frameworks have the same identity, allowing TCC permissions to persist
+// Only sign the final universal build (arch=universal), not intermediate builds
+const afterPack = async context => {
+  if (stage === 'prod') return
+  if (context.arch !== 3) return // 3 = universal, skip x64 (1) and arm64 (2)
+
+  const { execSync } = require('child_process')
+  const path = require('path')
+  const appPath = path.join(
+    context.appOutDir,
+    `${context.packager.appInfo.productFilename}.app`
+  )
+
+  console.log(`Ad-hoc signing entire app bundle: ${appPath}`)
+  try {
+    // Sign the entire app bundle recursively with ad-hoc identity
+    // --force: replace any existing signatures
+    // --deep: sign all nested code (frameworks, helpers, etc.)
+    execSync(`codesign --force --deep --sign - "${appPath}"`, {
+      stdio: 'inherit',
+    })
+    console.log('Ad-hoc signing completed successfully')
+  } catch (error) {
+    console.error('Ad-hoc signing failed:', error.message)
+    throw error
+  }
+}
+
 module.exports = {
+  afterPack,
   appId: stage === 'prod' ? 'ai.ito.ito' : `ai.ito.ito-${stage.toLowerCase()}`,
   productName: stage === 'prod' ? 'Ito' : `Ito-${stage}`,
   copyright: 'Copyright © 2025 Demox Labs',
@@ -64,10 +95,10 @@ module.exports = {
     target: 'default',
     icon: 'resources/build/icon.icns',
     darkModeSupport: true,
-    hardenedRuntime: true,
+    hardenedRuntime: stage === 'prod',
     gatekeeperAssess: false,
-    identity: 'Demox Labs, Inc. (294ZSTM7UB)',
-    notarize: true,
+    identity: stage === 'prod' ? 'Demox Labs, Inc. (294ZSTM7UB)' : null,
+    notarize: stage === 'prod',
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.inherit.plist',
     extendInfo: {

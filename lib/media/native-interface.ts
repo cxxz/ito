@@ -1,9 +1,14 @@
-import { app } from 'electron'
 import os from 'os'
 import { join } from 'path'
 
 const platform = os.platform()
-const isDev = !app.isPackaged
+
+// Lazy-load electron to avoid module load timing issues
+const getIsDev = (): boolean => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { app } = require('electron')
+  return !app.isPackaged
+}
 
 export const getNativeBinaryPath = (
   nativeModuleName: string,
@@ -22,7 +27,7 @@ export const getNativeBinaryPath = (
 }
 
 const getTargetDir = (): string | null => {
-  if (isDev) {
+  if (getIsDev()) {
     const targetBase = join(__dirname, '../../native/target')
 
     if (platform === 'darwin') {

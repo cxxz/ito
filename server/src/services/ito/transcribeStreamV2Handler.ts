@@ -184,7 +184,7 @@ export class TranscribeStreamV2Handler {
                 })
               : null
 
-          // Use shared helper to create interaction and upload audio
+          // Use shared helper to create interaction
           await createInteractionWithAudio({
             id: finalInteractionId,
             userId,
@@ -192,7 +192,6 @@ export class TranscribeStreamV2Handler {
             asrOutput,
             llmOutput,
             durationMs: duration,
-            rawAudio: fullAudioWAV,
           })
         } catch (error) {
           console.error('Failed to create interaction:', error)
@@ -327,20 +326,41 @@ export class TranscribeStreamV2Handler {
   }
 
   private extractAsrConfig(mergedConfig: StreamConfig) {
-    return {
-      asrModel: this.resolveOrDefault(
-        mergedConfig.llmSettings?.asrModel,
-        DEFAULT_ADVANCED_SETTINGS.asrModel,
-      ),
-      asrProvider: this.resolveOrDefault(
+    // ASR_PROVIDER env var takes precedence over client settings
+    const asrProvider =
+      process.env.ASR_PROVIDER ||
+      this.resolveOrDefault(
         mergedConfig.llmSettings?.asrProvider,
         DEFAULT_ADVANCED_SETTINGS.asrProvider,
-      ),
+      )
+
+    // Determine the appropriate default model based on provider
+    const defaultAsrModel = this.getDefaultAsrModel(asrProvider)
+
+    // ASR_MODEL env var takes precedence, then client settings, then provider-specific default
+    const asrModel =
+      process.env.ASR_MODEL ||
+      this.resolveOrDefault(mergedConfig.llmSettings?.asrModel, '') ||
+      defaultAsrModel
+
+    return {
+      asrModel,
+      asrProvider,
       noSpeechThreshold: this.resolveOrDefault(
         mergedConfig.llmSettings?.noSpeechThreshold,
         DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold,
       ),
       vocabulary: mergedConfig.vocabulary,
+    }
+  }
+
+  private getDefaultAsrModel(provider: string): string {
+    switch (provider) {
+      case 'aliyun':
+        return 'qwen3-asr-flash'
+      case 'groq':
+      default:
+        return DEFAULT_ADVANCED_SETTINGS.asrModel
     }
   }
 

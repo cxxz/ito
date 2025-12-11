@@ -2,18 +2,14 @@ import { useWindowContext } from './WindowContext'
 import React, { useState, useEffect } from 'react'
 import { OnboardingTitlebar } from './OnboardingTitlebar'
 import { useOnboardingStore } from '@/app/store/useOnboardingStore'
-import { UserCircle, PanelLeft, CogFour, Logout } from '@mynaui/icons-react'
+import { UserCircle, PanelLeft, CogFour } from '@mynaui/icons-react'
 import { useMainStore } from '@/app/store/useMainStore'
-import { useAuthStore } from '@/app/store/useAuthStore'
-import { useAuth } from '@/app/components/auth/useAuth'
 
 export const Titlebar = () => {
   const { onboardingCompleted } = useOnboardingStore()
-  const { isAuthenticated } = useAuthStore()
-  const showOnboarding = !onboardingCompleted || !isAuthenticated
+  const showOnboarding = !onboardingCompleted
   const { toggleNavExpanded, setCurrentPage, setSettingsPage, navExpanded } =
     useMainStore()
-  const { logoutUser } = useAuth()
   const wcontext = useWindowContext().window
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
@@ -63,16 +59,6 @@ export const Titlebar = () => {
     e.stopPropagation()
     setCurrentPage('settings')
     setSettingsPage('account')
-    setShowUserDropdown(false)
-  }
-
-  const handleSignOutClick = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    try {
-      await logoutUser()
-    } catch (error) {
-      console.error('Logout failed:', error)
-    }
     setShowUserDropdown(false)
   }
 
@@ -191,17 +177,10 @@ export const Titlebar = () => {
               <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                 <button
                   onClick={handleSettingsClick}
-                  className="w-full px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-t-lg cursor-pointer"
+                  className="w-full px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-lg cursor-pointer"
                 >
                   <CogFour className="w-4 h-4" />
                   Settings
-                </button>
-                <button
-                  onClick={handleSignOutClick}
-                  className="w-full px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-b-lg cursor-pointer"
-                >
-                  <Logout className="w-4 h-4" />
-                  Sign Out
                 </button>
               </div>
             )}

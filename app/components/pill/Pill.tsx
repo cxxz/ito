@@ -89,7 +89,9 @@ const Pill = () => {
   )
   // Fixed size array of volume values to be used for the audio bars, size is 21
   const [volumeHistory, setVolumeHistory] = useState<number[]>([])
-  const [lastVolumeUpdate, setLastVolumeUpdate] = useState(0)
+  // Use refs for mutable values to avoid stale closures in IPC handlers
+  const volumeHistoryRef = useRef<number[]>([])
+  const lastVolumeUpdateRef = useRef(0)
 
   useEffect(() => {
     // Listen for recording state changes from the main process
@@ -116,6 +118,7 @@ const Pill = () => {
           setIsManualRecording(false)
           isManualRecordingRef.current = false
           // Only clear volume history when recording stops
+          volumeHistoryRef.current = []
           setVolumeHistory([])
         }
       },
@@ -131,17 +134,19 @@ const Pill = () => {
 
     // Listen for volume updates from the main process
     const unsubVolume = window.api.on('volume-update', (vol: number) => {
-      // throttle the volume updates to 80ms
+      // throttle the volume updates to 64ms
       const now = Date.now()
-      if (now - lastVolumeUpdate < BAR_UPDATE_INTERVAL) {
+      if (now - lastVolumeUpdateRef.current < BAR_UPDATE_INTERVAL) {
         return
       }
-      const newVolumeHistory = [...volumeHistory, vol]
-      if (newVolumeHistory.length > 42) {
-        newVolumeHistory.shift()
+      lastVolumeUpdateRef.current = now
+
+      const newHistory = [...volumeHistoryRef.current, vol]
+      if (newHistory.length > 42) {
+        newHistory.shift()
       }
-      setVolumeHistory(newVolumeHistory)
-      setLastVolumeUpdate(now)
+      volumeHistoryRef.current = newHistory
+      setVolumeHistory(newHistory)
     })
 
     // Listen for settings updates from the main process
@@ -187,7 +192,7 @@ const Pill = () => {
       unsubOnboarding()
       unsubUserAuth()
     }
-  }, [volumeHistory, lastVolumeUpdate, recordingMode])
+  }, [recordingMode])
 
   // Define dimensions for different states
   const idleWidth = 36

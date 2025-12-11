@@ -1,7 +1,31 @@
-import './env'
-import './sentry'
-import { app, protocol } from 'electron'
-import { electronApp, optimizer } from '@electron-toolkit/utils'
+// Import env first to set up app paths and name before app.whenReady()
+import { ITO_ENV } from './env'
+
+import { app, protocol, BrowserWindow } from 'electron'
+
+// Inline replacement for @electron-toolkit/utils to avoid module load timing issues
+const setAppUserModelId = (id: string): void => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(!app.isPackaged ? process.execPath : id)
+  }
+}
+
+const watchWindowShortcuts = (window: BrowserWindow): void => {
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      // Allow F12 for dev tools
+      return
+    }
+    // Allow refresh shortcuts
+    if (
+      input.type === 'keyDown' &&
+      input.key === 'r' &&
+      (input.control || input.meta)
+    ) {
+      return
+    }
+  })
+}
 import {
   createAppWindow,
   createPillWindow,
@@ -20,18 +44,14 @@ import { grpcClient } from '../clients/grpcClient'
 import { preventAppNap } from './appNap'
 import { syncService } from './syncService'
 import { checkAccessibilityPermission } from '../utils/crossPlatform'
-import mainStore, { initializeStore } from './store'
-import { STORE_KEYS } from '../constants/store-keys'
+import { initializeStore } from './store'
 import { selectedTextReaderService } from '../media/selected-text-reader'
 import { macOSAccessibilityContextProvider } from '../media/macOSAccessibilityContextProvider'
 import { voiceInputService } from './voiceInputService'
 import { initializeMicrophoneSelection } from '../media/microphoneSetUp'
-import { validateStoredTokens, ensureValidTokens } from '../auth/events'
-import { Auth0Config, validateAuth0Config } from '../auth/config'
 import { createAppTray } from './tray'
 import { initializeAutoUpdater } from './autoUpdaterWrapper'
 import { teardown } from './teardown'
-import { ITO_ENV } from './env'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -63,29 +83,10 @@ app.whenReady().then(async () => {
   // Initialize logging after DB + store so batched log persistence can write
   initializeLogging()
 
-  // Validate Auth0 configuration
-  try {
-    validateAuth0Config()
-  } catch (error) {
-    console.error('Auth0 configuration error:', error)
-    console.warn(
-      'Token refresh will be disabled due to missing Auth0 configuration',
-    )
-  }
+  // Self-hosted mode: no authentication required
+  console.log('Running in self-hosted mode (no authentication)')
 
-  // Validate stored tokens before using them (will attempt refresh if needed)
-  const tokensAreValid = await validateStoredTokens(Auth0Config)
-
-  // If we have valid tokens from a previous session, start the sync service
-  if (tokensAreValid) {
-    const accessToken = mainStore.get(STORE_KEYS.ACCESS_TOKEN) as
-      | string
-      | undefined
-    if (accessToken) {
-      grpcClient.setAuthToken(accessToken)
-    }
-  }
-
+  // Start sync service
   syncService.start()
 
   // Setup protocol handling for deep links
@@ -97,7 +98,7 @@ app.whenReady().then(async () => {
   // Register the handler for the 'res' protocol now that the app is ready.
   const appId = ITO_ENV === 'prod' ? 'ai.ito.ito' : `ai.ito.ito-${ITO_ENV}`
   registerResourcesProtocol()
-  electronApp.setAppUserModelId(appId)
+  setAppUserModelId(appId)
 
   // IMPORTANT: Register IPC handlers BEFORE creating windows
   // This prevents the renderer from making IPC calls before handlers are ready
@@ -160,23 +161,11 @@ app.whenReady().then(async () => {
   })
 
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    watchWindowShortcuts(window)
   })
 
   // Initialize auto-updater
   initializeAutoUpdater()
-
-  // Set up periodic token refresh check (every 10 minutes)
-  setInterval(
-    async () => {
-      try {
-        await ensureValidTokens(Auth0Config)
-      } catch (error) {
-        console.error('Periodic token refresh failed:', error)
-      }
-    },
-    10 * 60 * 1000,
-  ) // Check every 10 minutes
 })
 
 app.on('window-all-closed', () => {

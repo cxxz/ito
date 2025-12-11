@@ -130,7 +130,7 @@ describe('InteractionManager', () => {
       expect(mockDbRun).not.toHaveBeenCalled()
     })
 
-    test('should skip creation when no user ID', async () => {
+    test('should use self-hosted fallback when no user ID', async () => {
       mockMainStore.get.mockReturnValue(null)
 
       interactionManager.initialize()
@@ -141,7 +141,10 @@ describe('InteractionManager', () => {
       )
 
       expect(mockMainStore.get).toHaveBeenCalledWith(STORE_KEYS.USER_PROFILE)
-      expect(mockDbRun).not.toHaveBeenCalled()
+      // Should still create interaction with 'self-hosted' as user_id
+      expect(mockDbRun).toHaveBeenCalled()
+      const params = mockDbRun.mock.calls[0][1] as unknown as any[]
+      expect(params).toContain('self-hosted')
     })
   })
 

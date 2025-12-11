@@ -2,6 +2,7 @@ import { LlmProvider } from './llmProvider.js'
 import { ClientProvider } from './providers.js'
 import { groqClient } from './groqClient.js'
 import { cerebrasClient } from './cerebrasClient.js'
+import { aliyunClient } from './aliyunClient.js'
 import { ClientUnavailableError } from './errors.js'
 
 /**
@@ -16,6 +17,12 @@ export function getAsrProvider(providerName: string): LlmProvider {
         throw new ClientUnavailableError(ClientProvider.GROQ)
       }
       return groqClient
+
+    case ClientProvider.ALIYUN:
+      if (!aliyunClient?.isAvailable) {
+        throw new ClientUnavailableError(ClientProvider.ALIYUN)
+      }
+      return aliyunClient
 
     default:
       throw new ClientUnavailableError(providerName as ClientProvider)
@@ -55,6 +62,10 @@ export function getAvailableAsrProviders(): ClientProvider[] {
 
   if (groqClient.isAvailable) {
     providers.push(ClientProvider.GROQ)
+  }
+
+  if (aliyunClient?.isAvailable) {
+    providers.push(ClientProvider.ALIYUN)
   }
 
   return providers

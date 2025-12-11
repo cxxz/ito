@@ -7,7 +7,6 @@ import {
   DictionaryItem as DictionaryItemPb,
   AdvancedSettings as AdvancedSettingsPb,
   TimingReport,
-  TimingEvent,
   CreateNoteRequestSchema,
   UpdateNoteRequestSchema,
   DeleteNoteRequestSchema,
@@ -24,14 +23,11 @@ import {
   GetAdvancedSettingsRequestSchema,
   UpdateAdvancedSettingsRequestSchema,
   SubmitTimingReportsRequestSchema,
-  TimingReportSchema,
-  TimingEventSchema,
   ItoMode,
   TranscribeStreamRequest,
 } from '@/app/generated/ito_pb'
 import { createClient } from '@connectrpc/connect'
 import { createConnectTransport } from '@connectrpc/connect-node'
-import { ConnectError, Code } from '@connectrpc/connect'
 import { BrowserWindow } from 'electron'
 import { create } from '@bufbuild/protobuf'
 import { Note, Interaction, DictionaryItem } from '../main/sqlite/models'
@@ -40,20 +36,14 @@ import {
   AdvancedSettings,
   getAdvancedSettings,
   getCurrentUserId,
-  store,
 } from '../main/store'
 import { getSelectedTextString } from '../media/selected-text-reader'
-import { ensureValidTokens } from '../auth/events'
-import { Auth0Config } from '../auth/config'
 import { getActiveWindow } from '../media/active-application'
-import { STORE_KEYS } from '../constants/store-keys.js'
 
 class GrpcClient {
   private client: ReturnType<typeof createClient<typeof ItoService>>
   private timingClient: ReturnType<typeof createClient<typeof TimingService>>
-  private authToken: string | null = null
   private mainWindow: BrowserWindow | null = null
-  private isRefreshingTokens: boolean = false
 
   constructor() {
     const transport = createConnectTransport({
@@ -92,17 +82,9 @@ class GrpcClient {
     }
   }
 
-  setAuthToken(token: string | null) {
-    this.authToken = token
-  }
-
   private getHeaders() {
-    if (!this.authToken) {
-      // Though we have guards elsewhere, this is a final check.
-      // Throwing here helps us pinpoint auth issues during development.
-      return new Headers()
-    }
-    return new Headers({ Authorization: `Bearer ${this.authToken}` })
+    // Self-hosted mode: no authentication required
+    return new Headers()
   }
 
   private async getHeadersWithMetadata(mode: ItoMode) {
@@ -207,70 +189,8 @@ class GrpcClient {
   }
 
   private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation()
-    } catch (error) {
-      const shouldRetry = await this.handleAuthError(error)
-
-      if (shouldRetry) {
-        console.log('Retrying operation after token refresh')
-        return await operation()
-      }
-
-      throw error
-    }
-  }
-
-  private async handleAuthError(error: any): Promise<boolean> {
-    // Check if this is an authentication error
-    if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
-      console.log(
-        'Authentication error detected, attempting token refresh before logout',
-      )
-
-      // Prevent multiple simultaneous refresh attempts
-      if (this.isRefreshingTokens) {
-        console.log('Token refresh already in progress, skipping')
-        return false
-      }
-
-      try {
-        this.isRefreshingTokens = true
-
-        // Attempt to refresh tokens
-        const refreshResult = await ensureValidTokens(Auth0Config)
-
-        if (
-          refreshResult.success &&
-          'tokens' in refreshResult &&
-          refreshResult.tokens?.access_token
-        ) {
-          console.log('Token refresh successful, updating auth token')
-          this.authToken = refreshResult.tokens.access_token
-
-          // Return true to indicate the caller should retry
-          return true
-        } else {
-          console.log('Token refresh failed, proceeding with logout')
-        }
-      } catch (refreshError) {
-        console.error('Error during token refresh:', refreshError)
-      } finally {
-        this.isRefreshingTokens = false
-      }
-
-      // If we get here, token refresh failed - proceed with logout
-      console.log('Signing out user due to authentication failure')
-
-      // Notify the main window to sign out the user
-      this.safeSendToMainWindow('auth-token-expired')
-
-      // Clear the auth token
-      this.authToken = null
-    }
-
-    // Return false to indicate no retry should be attempted
-    return false
+    // Self-hosted mode: no token refresh needed, just execute the operation
+    return await operation()
   }
 
   async transcribeStream(stream: AsyncIterable<AudioChunk>, mode: ItoMode) {

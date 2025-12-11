@@ -72,15 +72,9 @@ export class SyncService {
 
     try {
       const user = mainStore.get(STORE_KEYS.USER_PROFILE) as any
-      if (!user?.id) {
-        console.log(
-          'No user logged in or user profile is missing ID. Skipping sync.',
-        )
-        this.isSyncing = false
-        return
-      }
+      const userId = user?.id || 'self-hosted'
 
-      const lastSyncedAtKey = getLastSyncedAtKey(user.id)
+      const lastSyncedAtKey = getLastSyncedAtKey(userId)
       const lastSyncedAt =
         (await KeyValueStore.get(lastSyncedAtKey)) || new Date(0).toISOString()
 

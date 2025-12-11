@@ -1,6 +1,9 @@
 out/*
 release/*
 node_modules
+scratchpad
+package-lock.json
+
 .env
 .env.local
 .env.development.local

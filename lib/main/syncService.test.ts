@@ -150,26 +150,22 @@ describe('SyncService Integration Tests', () => {
   })
 
   describe('Sync Service Lifecycle', () => {
-    test('should skip sync when no user is logged in', async () => {
+    test('should use self-hosted fallback when no user is logged in', async () => {
       mockMainStore.get.mockReturnValue(null) // No user profile
 
       await syncService.start()
 
-      // Should not attempt any gRPC operations
-      Object.values(mockGrpcClient).forEach(mockFn => {
-        expect(mockFn).not.toHaveBeenCalled()
-      })
+      // Should still perform sync operations using 'self-hosted' as user ID
+      expect(mockGrpcClient.listNotesSince).toHaveBeenCalled()
     })
 
-    test('should skip sync when user profile is missing ID', async () => {
+    test('should use self-hosted fallback when user profile is missing ID', async () => {
       mockMainStore.get.mockReturnValue({ name: 'Test User' }) // Missing ID
 
       await syncService.start()
 
-      // Should not attempt any gRPC operations
-      Object.values(mockGrpcClient).forEach(mockFn => {
-        expect(mockFn).not.toHaveBeenCalled()
-      })
+      // Should still perform sync operations using 'self-hosted' as user ID
+      expect(mockGrpcClient.listNotesSince).toHaveBeenCalled()
     })
   })
 
