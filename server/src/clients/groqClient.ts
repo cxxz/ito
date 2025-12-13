@@ -86,7 +86,12 @@ class GroqClient implements LlmProvider {
       return completion.choices[0]?.message?.content?.trim() || ' '
     } catch (error: any) {
       console.error('An error occurred during transcript adjustment:', error)
-      return userPrompt
+      throw new ClientApiError(
+        error.message || 'An error occurred during transcript adjustment',
+        ClientProvider.GROQ,
+        error,
+        error.status || error.statusCode,
+      )
     }
   }
 

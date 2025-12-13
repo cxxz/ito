@@ -79,7 +79,12 @@ class CerebrasClient implements LlmProvider {
       return (completion.choices as any)[0]?.message?.content?.trim() || ' '
     } catch (error: any) {
       console.error('An error occurred during transcript adjustment:', error)
-      return userPrompt
+      throw new ClientApiError(
+        error.message || 'An error occurred during transcript adjustment',
+        ClientProvider.CEREBRAS,
+        error,
+        error.status || error.statusCode,
+      )
     }
   }
 
