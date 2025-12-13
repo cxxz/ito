@@ -59,7 +59,7 @@ class CerebrasClient implements LlmProvider {
       'Adjust and improve this transcript for clarity and accuracy.'
 
     try {
-      const completion = await this._client.chat.completions.create({
+      const requestBody = {
         messages: [
           {
             role: 'system',
@@ -72,7 +72,9 @@ class CerebrasClient implements LlmProvider {
         ],
         model,
         temperature,
-      })
+      }
+      console.log('[CerebrasClient] LLM request body:', JSON.stringify(requestBody, null, 2))
+      const completion = await this._client.chat.completions.create(requestBody)
 
       return (completion.choices as any)[0]?.message?.content?.trim() || ' '
     } catch (error: any) {

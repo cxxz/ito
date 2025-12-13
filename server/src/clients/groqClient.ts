@@ -65,7 +65,7 @@ class GroqClient implements LlmProvider {
       'Adjust and improve this transcript for clarity and accuracy.'
 
     try {
-      const completion = await this._client.chat.completions.create({
+      const requestBody = {
         messages: [
           {
             role: 'system',
@@ -78,7 +78,9 @@ class GroqClient implements LlmProvider {
         ],
         model,
         temperature,
-      })
+      }
+      console.log('[GroqClient] LLM request body:', JSON.stringify(requestBody, null, 2))
+      const completion = await this._client.chat.completions.create(requestBody)
 
       // Return a space to enable emptying the document
       return completion.choices[0]?.message?.content?.trim() || ' '

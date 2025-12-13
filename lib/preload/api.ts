@@ -123,21 +123,6 @@ const api = {
 
     delete: (id: string) => ipcRenderer.invoke('interactions:delete', id),
   },
-  trial: {
-    complete: () => ipcRenderer.invoke('trial:complete'),
-    startAfterOnboarding: () =>
-      ipcRenderer.invoke('start-trial-after-onboarding'),
-  },
-  billing: {
-    createCheckoutSession: () =>
-      ipcRenderer.invoke('billing:create-checkout-session'),
-    confirmSession: (sessionId: string) =>
-      ipcRenderer.invoke('billing:confirm-session', { sessionId }),
-    status: () => ipcRenderer.invoke('billing:status'),
-    cancelSubscription: () => ipcRenderer.invoke('billing:cancel-subscription'),
-    reactivateSubscription: () =>
-      ipcRenderer.invoke('billing:reactivate-subscription'),
-  },
   openMailto: (email: string) => ipcRenderer.invoke('open-mailto', email),
   loginItem: {
     setSettings: (enabled: boolean) =>

@@ -42,14 +42,15 @@ export class ContextGrabber {
     // Get selected text if in EDIT mode (used for replacement logic)
     const contextText = await this.getContextText(mode)
 
-    // Get selected text for vocabulary hints (works in ALL modes)
-    // If we already have contextText (EDIT mode), reuse it; otherwise read separately
-    const selectedTextForVocab =
-      contextText || (await this.getSelectedTextForVocabulary())
-
     // Extract vocabulary words from selected text as temporary hints
+    // Only do this in non-EDIT modes - in EDIT mode, selected text is used
+    // only as context for the LLM step, not as vocabulary hints for ASR
     const selectedTextVocabulary =
-      this.extractVocabularyFromText(selectedTextForVocab)
+      mode !== ItoMode.EDIT
+        ? this.extractVocabularyFromText(
+            await this.getSelectedTextForVocabulary(),
+          )
+        : []
     if (selectedTextVocabulary.length > 0) {
       console.log(
         '[ContextGrabber] Extracted vocabulary from selected text:',

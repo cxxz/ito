@@ -8,7 +8,6 @@ type SettingsPageType =
   | 'audio'
   | 'account'
   | 'advanced'
-  | 'pricing-billing'
 
 interface MainStore {
   navExpanded: boolean
