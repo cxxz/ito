@@ -6,10 +6,13 @@ This is the ITO project - an AI assistant application with both client and serve
 
 ## Project Structure
 
-- `app/` - Client application code
+- `app/` - Renderer process code (React UI components, stores, styles)
+- `lib/` - Shared library code (main process, preload scripts, utilities)
+- `native/` - Native binaries (Rust modules and Swift modules for macOS)
 - `server/` - Server-side code with gRPC services
 - `server/src/ito.proto` - Protocol buffer definitions
-- `server/src/clients/` - Various client implementations (Groq, LLM providers, etc.)
+- `server/src/clients/` - LLM/ASR client implementations (Groq, Cerebras, OpenAI, Aliyun)
+- `scripts/` - Build and utility scripts
 
 ## Branch
 
@@ -19,10 +22,11 @@ Main development branch: `dev`
 
 - Dev: `bun dev` (starts electron-vite dev with watch)
 - Server: `docker compose up --build` (run from server directory)
-- Build: `bun build:app:mac` or `bun build:app:windows`
-- Test: `bun runAllTests` (runs lib, server, and native tests)
+- Build: `bun build:mac` or `bun build:win`
+- Test: `bun runAllTests` (runs lib, server, app, and native tests)
   - Lib tests: `bun runLibTests`
   - Server tests: `bun runServerTests`
+  - App tests: `bun runAppTests`
   - Native tests: `bun runNativeTests` (or see "Native Binary Tests" section)
 - Lint:
   - TypeScript: `bun lint` (check) or `bun lint:fix` (fix)
@@ -34,7 +38,9 @@ Main development branch: `dev`
 
 ## Native Binary Tests
 
-The `native/` directory contains Rust binaries that power the app's core functionality. The modules are organized as a Cargo workspace, allowing you to test and build all modules with a single command.
+The `native/` directory contains native binaries that power the app's core functionality:
+- **Rust modules**: Organized as a Cargo workspace, allowing you to test and build all modules with a single command
+- **Swift modules**: macOS-only modules for accessibility features (`cursor-context`, `macos-text`)
 
 ### Running Tests
 
@@ -60,11 +66,16 @@ cargo test
 
 ### Native Modules
 
+**Rust modules (cross-platform):**
 - `global-key-listener` - Keyboard event capture and hotkey management
 - `audio-recorder` - Audio recording with sample rate conversion
 - `text-writer` - Cross-platform text input simulation
 - `active-application` - Active window detection
 - `selected-text-reader` - Selected text extraction
+
+**Swift modules (macOS-only):**
+- `cursor-context` - Cursor position and context extraction
+- `macos-text` - macOS text accessibility utilities
 
 ### Linting and Formatting
 
@@ -72,7 +83,7 @@ Rust code follows standard formatting and linting rules defined in `native/`:
 
 - **rustfmt.toml** - Code formatting configuration (100 char width, Unix line endings)
 - **clippy.toml** - Linter configuration (cognitive complexity threshold)
-- **Cargo.toml** - Workspace-level lint rules (pedantic + nursery warnings)
+- **Cargo.toml** - Workspace-level lint rules (all warnings, dbg_macro denied, todo warned)
 
 Run checks locally:
 
@@ -124,7 +135,13 @@ Native tests and builds are integrated into the existing CI workflows:
 ## Tech Stack
 
 - TypeScript
-- bun
-- gRPC with Protocol Buffers
-- React (for UI components)
-- Various LLM providers (Groq, etc.)
+- Electron (desktop app framework)
+- React (UI components)
+- Bun (package manager and runtime)
+- gRPC with Protocol Buffers (client-server communication)
+- Zustand (state management)
+- Tailwind CSS + MUI + Radix UI (styling and components)
+- Rust + Swift (native binaries)
+- Auth0 (authentication)
+- Sentry (error monitoring)
+- LLM providers: Groq, Cerebras, OpenAI, Aliyun

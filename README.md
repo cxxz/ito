@@ -12,7 +12,7 @@
   <p>
     <img alt="macOS" src="https://img.shields.io/badge/macOS-supported-blue?logo=apple&logoColor=white">
     <img alt="Windows" src="https://img.shields.io/badge/Windows-supported-blue?logo=windows&logoColor=white">
-    <img alt="Version" src="https://img.shields.io/badge/version-0.2.0-green">
+    <img alt="Version" src="https://img.shields.io/badge/version-0.2.3-green">
     <img alt="License" src="https://img.shields.io/badge/license-GPL-blue">
   </p>
 </div>
@@ -218,7 +218,10 @@ ito/
 │   ├── audio-recorder/    # Audio capture (Rust)
 │   ├── global-key-listener/ # Keyboard events (Rust)
 │   ├── text-writer/       # Text insertion (Rust)
-│   └── active-application/ # Get the active application for context (Rust)
+│   ├── active-application/ # Active window detection (Rust)
+│   ├── selected-text-reader/ # Selected text extraction (Rust)
+│   ├── cursor-context/    # Cursor position context (Swift, macOS)
+│   └── macos-text/        # Text accessibility utilities (Swift, macOS)
 ├── server/                # gRPC transcription server
 │   ├── src/               # Server implementation
 │   └── infra/             # AWS infrastructure (CDK)
@@ -233,20 +236,27 @@ bun run dev                 # Start with hot reload
 bun run dev:rust           # Build Rust components and start dev
 
 # Building Native Components
-bun run build:rust         # Build for current platform
-bun run build:rust:mac     # Build for macOS (with universal binary)
-bun run build:rust:win     # Build for Windows
+./build-binaries.sh --mac   # Build for macOS (universal binary)
+./build-binaries.sh --windows # Build for Windows
 
 # Building Application
 bun run build:mac          # Build for macOS
 bun run build:win          # Build for Windows
 ./build-app.sh mac          # Build macOS using build script
-./build-app.sh windows      # Build Windows using build script (requires Docker)
+./build-app.sh windows      # Build Windows using build script
 
 # Code Quality
 bun run lint               # Run ESLint
-bun run format             # Run Prettier
+bun run format             # Check formatting with Prettier
 bun run lint:fix           # Fix linting issues
+bun run format:fix         # Fix formatting issues
+
+# Testing
+bun runAllTests            # Run all tests (lib, server, app, native)
+bun runLibTests            # Run lib tests only
+bun runServerTests         # Run server tests only
+bun runAppTests            # Run app tests only
+bun runNativeTests         # Run native (Rust) tests only
 ```
 
 ---

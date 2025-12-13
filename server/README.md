@@ -20,7 +20,7 @@ Create your environment configuration:
 cp .env.example .env
 ```
 
-Add the following configuration to your `.env` file:
+The `.env.example` file contains all available configuration options. Key settings:
 
 ```bash
 # Database Configuration
@@ -30,27 +30,22 @@ DB_USER=devuser
 DB_PASS=devpass
 DB_NAME=devdb
 
-# Storage Configuration (S3/MinIO)
-BLOB_STORAGE_BUCKET=ito-audio-storage
-S3_ENDPOINT=http://localhost:9000
-S3_ACCESS_KEY_ID=minioadmin
-S3_SECRET_ACCESS_KEY=minioadmin
-S3_FORCE_PATH_STYLE=true
-
 # GROQ API Configuration (Required)
 GROQ_API_KEY=your_groq_api_key_here
 
-# CEREBRAS API Key (Not Required)
-CEREBRAS_API_KEY=your_CEREBRAS_API_KEY_here
+# Optional: Additional LLM providers
+CEREBRAS_API_KEY=your_cerebras_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+ALIYUN_API_KEY=your_aliyun_api_key_here
 
 # Optional: ASR defaults (affects app "Settings > Advanced" defaults)
 ASR_PROVIDER="groq"  # Options: groq, aliyun
 ASR_MODEL=""         # Optional: override ASR model (e.g. "qwen3-asr-flash" for aliyun)
 
 # Optional: default LLM models per provider (affects app "Settings > Advanced" defaults)
-OPENAI_DEFAULT_LLM="gpt-5-mini"  # defaults to gpt-5-mini
-GROQ_DEFAULT_LLM=""              # defaults to moonshotai/kimi-k2-instruct-0905
-CEREBRAS_DEFAULT_LLM=""          # defaults to qwen-3-235b-a22b-instruct-2507
+OPENAI_DEFAULT_LLM=""   # defaults to gpt-4o-mini
+GROQ_DEFAULT_LLM=""     # defaults to moonshotai/kimi-k2-instruct-0905
+CEREBRAS_DEFAULT_LLM="" # defaults to qwen-3-235b-a22b-instruct-2507
 
 # Optional: OpenAI-compatible base URL
 OPENAI_BASE_URL=""  # defaults to https://api.openai.com/v1
@@ -58,7 +53,7 @@ OPENAI_BASE_URL=""  # defaults to https://api.openai.com/v1
 # Authentication (Optional - set to false for local development)
 REQUIRE_AUTH=false
 AUTH0_DOMAIN=your_auth0_domain.auth0.com
-AUTH0_AUDIENCE=http://localhost:3000
+AUTH0_AUDIENCE=http://localhost:3003
 ```
 
 ### 2. Get Required API Keys
@@ -88,21 +83,17 @@ bun install
 
 ### 4. Local Services Setup
 
-Start all local services (PostgreSQL + MinIO for S3-compatible storage):
+Start the PostgreSQL database:
 
 ```bash
-# Start all local services
-bun run local-services-up
+# Start PostgreSQL database
+bun run local-db-up
 
 # Run database migrations
 bun run db:migrate
 ```
 
-This will start:
-
-- **PostgreSQL** on port 5432
-- **MinIO S3** on port 9000 (API) and 9001 (Console)
-- Auto-creates the `ito-audio-storage` bucket
+This will start **PostgreSQL** on port 5432.
 
 ### 5. Start Development Server
 
@@ -111,7 +102,7 @@ This will start:
 bun run dev
 ```
 
-The server will start on `http://localhost:3000`
+The server will start on `http://localhost:3003` (default port from `.env.example`).
 
 ## 📋 Available Scripts
 
@@ -123,20 +114,20 @@ bun run start            # Start production server
 bun run build            # Build TypeScript to JavaScript
 ```
 
-### Database & Storage Management
+### Database Management
 
 ```bash
-# Services Management
-bun run local-services-up    # Start PostgreSQL + MinIO
-bun run local-services-down  # Stop all local services
-bun run local-db-up          # Start only PostgreSQL
-bun run local-s3-up          # Start only MinIO + create bucket
-bun run local-s3-down        # Stop MinIO
+# Database Services
+bun run local-db-up          # Start PostgreSQL
+bun run local-db-down        # Stop PostgreSQL
 
 # Database Operations
 bun run db:migrate           # Run migrations up
 bun run db:migrate:down      # Run migrations down
 bun run db:migrate:create <name>  # Create new migration
+
+# Docker Compose (full stack)
+bun run docker               # Start server + database with docker compose
 ```
 
 ### Protocol Buffers
@@ -160,8 +151,8 @@ bun run test-client      # Run gRPC client tests
 - **Fastify Server**: HTTP/gRPC server with Auth0 integration
 - **Connect RPC**: Type-safe gRPC implementation
 - **PostgreSQL**: Primary database for user data and metadata
-- **S3/MinIO**: Audio file storage (local development uses MinIO)
 - **GROQ SDK**: AI transcription service integration
+- **Multi-LLM Support**: Groq, Cerebras, OpenAI, and Aliyun providers
 
 ### API Services
 
@@ -194,30 +185,27 @@ bun run test-client      # Run gRPC client tests
 
 ### Environment Variables
 
-| Variable               | Required | Default                         | Description                                                     |
-| ---------------------- | -------- | ------------------------------- | --------------------------------------------------------------- |
-| `DB_HOST`              | Yes      | `localhost`                     | PostgreSQL host                                                 |
-| `DB_PORT`              | Yes      | `5432`                          | PostgreSQL port                                                 |
-| `DB_USER`              | Yes      | -                               | Database username                                               |
-| `DB_PASS`              | Yes      | -                               | Database password                                               |
-| `DB_NAME`              | Yes      | -                               | Database name                                                   |
-| `BLOB_STORAGE_BUCKET`  | Yes      | -                               | S3 bucket name for audio storage                                |
-| `S3_ENDPOINT`          | No       | -                               | S3 endpoint (for MinIO/local development)                       |
-| `S3_ACCESS_KEY_ID`     | No       | -                               | S3 access key (for MinIO/local development)                     |
-| `S3_SECRET_ACCESS_KEY` | No       | -                               | S3 secret key (for MinIO/local development)                     |
-| `S3_FORCE_PATH_STYLE`  | No       | `false`                         | Use path-style S3 URLs (required for MinIO)                     |
-| `GROQ_API_KEY`         | Yes      | -                               | GROQ API key for transcription/LLM services                      |
-| `CEREBRAS_API_KEY`     | No       | -                               | CEREBRAS API key for reasoning                                  |
-| `OPENAI_API_KEY`       | No       | -                               | OpenAI API key (enables OpenAI LLM provider)                     |
-| `OPENAI_BASE_URL`      | No       | `https://api.openai.com/v1`     | OpenAI-compatible API base URL                                  |
-| `ASR_PROVIDER`         | No       | `groq`                          | Default ASR provider shown in app Settings → Advanced            |
-| `ASR_MODEL`            | No       | provider default                | Optional ASR model override                                      |
-| `OPENAI_DEFAULT_LLM`   | No       | `gpt-5-mini`                    | Default LLM model when LLM provider is `openai`                  |
-| `GROQ_DEFAULT_LLM`     | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`                 |
-| `CEREBRAS_DEFAULT_LLM` | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras`             |
-| `REQUIRE_AUTH`         | No       | `false`                         | Enable Auth0 authentication                                      |
-| `AUTH0_DOMAIN`         | No\*     | -                               | Auth0 domain (\*required if auth enabled)                        |
-| `AUTH0_AUDIENCE`       | No\*     | -                               | Auth0 audience (\*required if auth enabled)                      |
+| Variable               | Required | Default                            | Description                                                     |
+| ---------------------- | -------- | ---------------------------------- | --------------------------------------------------------------- |
+| `PORT`                 | No       | `3003`                             | Server port                                                     |
+| `DB_HOST`              | Yes      | `localhost`                        | PostgreSQL host                                                 |
+| `DB_PORT`              | Yes      | `5432`                             | PostgreSQL port                                                 |
+| `DB_USER`              | Yes      | -                                  | Database username                                               |
+| `DB_PASS`              | Yes      | -                                  | Database password                                               |
+| `DB_NAME`              | Yes      | -                                  | Database name                                                   |
+| `GROQ_API_KEY`         | Yes      | -                                  | GROQ API key for transcription/LLM services                     |
+| `CEREBRAS_API_KEY`     | No       | -                                  | Cerebras API key for LLM                                        |
+| `OPENAI_API_KEY`       | No       | -                                  | OpenAI API key (enables OpenAI LLM provider)                    |
+| `ALIYUN_API_KEY`       | No       | -                                  | Aliyun API key (enables Aliyun ASR/LLM provider)                |
+| `OPENAI_BASE_URL`      | No       | `https://api.openai.com/v1`        | OpenAI-compatible API base URL                                  |
+| `ASR_PROVIDER`         | No       | `groq`                             | Default ASR provider (groq, aliyun)                             |
+| `ASR_MODEL`            | No       | provider default                   | Optional ASR model override                                     |
+| `OPENAI_DEFAULT_LLM`   | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`                 |
+| `GROQ_DEFAULT_LLM`     | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`                   |
+| `CEREBRAS_DEFAULT_LLM` | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras`               |
+| `REQUIRE_AUTH`         | No       | `false`                            | Enable Auth0 authentication                                     |
+| `AUTH0_DOMAIN`         | No\*     | -                                  | Auth0 domain (\*required if auth enabled)                       |
+| `AUTH0_AUDIENCE`       | No\*     | -                                  | Auth0 audience (\*required if auth enabled)                     |
 
 ### How Defaults Show Up In The App
 
@@ -227,29 +215,16 @@ bun run test-client      # Run gRPC client tests
   - Selecting an **LLM Provider** resets **LLM Model** to default; the displayed model comes from `OPENAI_DEFAULT_LLM` / `GROQ_DEFAULT_LLM` / `CEREBRAS_DEFAULT_LLM` when set, otherwise the built-in defaults.
   - ASR provider is shown from server defaults (it is not intended to be a user-controlled setting in the UI).
 
-### Database & Storage Configuration
+### Database Configuration
 
 **PostgreSQL Database:**
 The server uses PostgreSQL with automatic migrations. The database schema includes:
 
 - **users**: User profiles and settings
 - **notes**: Transcribed text and metadata
-- **interactions**: Dictation sessions (with S3 audio references)
+- **interactions**: Dictation session tracking
 - **dictionary**: Custom vocabulary
 - **llm_settings**: User-specific LLM configuration
-
-**S3 Storage:**
-Audio files are stored in S3 (or MinIO for local development) with the following structure:
-
-- **Bucket**: Configured via `BLOB_STORAGE_BUCKET`
-- **Keys**: `raw-audio/{userId}/{audioUuid}`
-- **Format**: Raw audio bytes (no file extensions)
-
-**Local Development Setup:**
-
-- **MinIO Console**: http://localhost:9001 (admin/admin)
-- **MinIO S3 API**: http://localhost:9000
-- **Auto-bucket creation**: `ito-audio-storage` created automatically
 
 ### Authentication
 
@@ -293,7 +268,7 @@ This deploys:
 ### Health Check
 
 ```bash
-curl http://localhost:3000/
+curl http://localhost:3003/
 ```
 
 ### gRPC Testing
@@ -318,8 +293,8 @@ Test individual services using the included test client or tools like:
 #### 1. Database Connection Errors
 
 ```bash
-# Check if PostgreSQL & MinIO are running
-bun run local-services-up
+# Check if PostgreSQL is running
+bun run local-db-up
 
 # Verify database credentials in .env
 # Ensure DB_HOST, DB_PORT, DB_USER, DB_PASS are correct
@@ -333,33 +308,17 @@ bun run local-services-up
 # Ensure you have credits in your GROQ account
 ```
 
-#### 3. S3/MinIO Storage Issues
+#### 3. Migration Failures
 
 ```bash
-# Check if MinIO is running
-bun run local-s3-up
-
-# Reset MinIO data (WARNING: destroys stored files)
+# Reset database and migrations (WARNING: destroys data)
+bun run local-db-down
 docker compose down -v
-bun run local-services-up
-
-# Manually setup MinIO bucket
-./scripts/setup-minio.sh
-
-# Verify S3 configuration in .env
-# Ensure S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY are set
-```
-
-#### 4. Migration Failures
-
-```bash
-# Reset migrations (WARNING: destroys data)
-bun run local-services-down
-bun run local-services-up
+bun run local-db-up
 bun run db:migrate
 ```
 
-#### 5. Auth0 Configuration
+#### 4. Auth0 Configuration
 
 ```bash
 # For local development, disable auth
@@ -368,11 +327,11 @@ echo "REQUIRE_AUTH=false" >> .env
 # For production, ensure AUTH0_DOMAIN and AUTH0_AUDIENCE are set
 ```
 
-#### 6. Port Conflicts
+#### 5. Port Conflicts
 
-If ports 5432, 9000, or 9001 are in use:
+If port 5432 or 3003 is in use:
 
-- Modify ports in `docker-compose.yml`
+- Modify ports in `docker-compose.yml` and `.env`
 - Update corresponding environment variables
 
 ### Debug Mode
@@ -383,20 +342,6 @@ Enable verbose logging:
 NODE_ENV=development bun run dev
 ```
 
-### MinIO Console Access
-
-For local development, access the MinIO console at http://localhost:9001:
-
-- **Username**: `minioadmin`
-- **Password**: `minioadmin`
-
-Use the console to:
-
-- View stored audio files
-- Monitor storage usage
-- Manage buckets and objects
-- Debug S3 operations
-
 ### Logs
 
 Check server logs for detailed error information:
@@ -405,7 +350,6 @@ Check server logs for detailed error information:
 - API authentication failures
 - Transcription service errors
 - Migration problems
-- S3 storage operations
 
 ## 📚 API Documentation
 
@@ -428,7 +372,7 @@ service ItoService {
 
 ### Client Integration
 
-The Ito desktop app automatically connects to `localhost:3000`. Ensure the server is running before starting the desktop application.
+The Ito desktop app connects to the server URL configured in your client `.env` file (typically `localhost:3003`). Ensure the server is running before starting the desktop application.
 
 ## 🤝 Contributing
 
