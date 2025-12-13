@@ -105,14 +105,16 @@ cp .env.example .env
 # Build native components (Rust binaries)
 ./build-binaries.sh
 
-# Set up and start the server (required for transcription)
-cd server
-cp .env.example .env  # Edit with your API keys
-bun install
-bun run local-db-up   # Start PostgreSQL database
-bun run db:migrate    # Run database migrations
-bun run dev           # Start development server
-cd ..
+	# Set up and start the server (required for transcription)
+	cd server
+	cp .env.example .env  # Edit with your API keys
+	# Optional: tweak server-controlled defaults that the app shows in Settings > Advanced
+	# (e.g. ASR_PROVIDER, ASR_MODEL, OPENAI_DEFAULT_LLM). See server/README.md.
+	bun install
+	bun run local-db-up   # Start PostgreSQL database
+	bun run db:migrate    # Run database migrations
+	bun run dev           # Start development server
+	cd ..
 
 # Start the Electron app (in a new terminal)
 bun run dev

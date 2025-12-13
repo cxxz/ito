@@ -284,6 +284,7 @@ export class AdvancedSettingsRepository {
         llm_provider: llmSettings.llm_provider,
         llm_model: llmSettings.llm_model,
         llm_temperature: llmSettings.llm_temperature,
+        llm_base_url: llmSettings.llm_base_url,
         transcription_prompt: llmSettings.transcription_prompt,
         editing_prompt: llmSettings.editing_prompt,
         no_speech_threshold: llmSettings.no_speech_threshold,
@@ -298,13 +299,19 @@ export class AdvancedSettingsRepository {
     userId: string,
     settingsData: UpdateAdvancedSettingsRequest,
   ): Promise<AdvancedSettings> {
+    const toNullableString = (value?: string | null): string | null => {
+      if (value === undefined || value === null) return null
+      const trimmed = value.trim()
+      return trimmed.length > 0 ? trimmed : null
+    }
+
     const res = await pool.query<LlmSettings>(
       `INSERT INTO llm_settings (
-         user_id, asr_model, asr_provider, asr_prompt, llm_provider, llm_model, 
-         llm_temperature, transcription_prompt, editing_prompt, no_speech_threshold, 
+         user_id, asr_model, asr_provider, asr_prompt, llm_provider, llm_model,
+         llm_temperature, llm_base_url, transcription_prompt, editing_prompt, no_speech_threshold,
          low_quality_threshold, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, current_timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, current_timestamp)
        ON CONFLICT (user_id)
        DO UPDATE SET
          asr_model = EXCLUDED.asr_model,
@@ -313,6 +320,7 @@ export class AdvancedSettingsRepository {
          llm_provider = EXCLUDED.llm_provider,
          llm_model = EXCLUDED.llm_model,
          llm_temperature = EXCLUDED.llm_temperature,
+         llm_base_url = EXCLUDED.llm_base_url,
          transcription_prompt = EXCLUDED.transcription_prompt,
          editing_prompt = EXCLUDED.editing_prompt,
          no_speech_threshold = EXCLUDED.no_speech_threshold,
@@ -321,16 +329,17 @@ export class AdvancedSettingsRepository {
        RETURNING *`,
       [
         userId,
-        settingsData.llm?.asrModel || 'whisper-large-v3',
-        settingsData.llm?.asrProvider || '',
-        settingsData.llm?.asrPrompt || '',
-        settingsData.llm?.llmProvider || '',
-        settingsData.llm?.llmModel || '',
-        settingsData.llm?.llmTemperature || 0.0,
-        settingsData.llm?.transcriptionPrompt || '',
-        settingsData.llm?.editingPrompt || '',
-        settingsData.llm?.noSpeechThreshold || 0.0,
-        settingsData.llm?.lowQualityThreshold || 0.0,
+        toNullableString(settingsData.llm?.asrModel),
+        toNullableString(settingsData.llm?.asrProvider),
+        toNullableString(settingsData.llm?.asrPrompt),
+        toNullableString(settingsData.llm?.llmProvider),
+        toNullableString(settingsData.llm?.llmModel),
+        settingsData.llm?.llmTemperature ?? null,
+        toNullableString(settingsData.llm?.llmBaseUrl),
+        toNullableString(settingsData.llm?.transcriptionPrompt),
+        toNullableString(settingsData.llm?.editingPrompt),
+        settingsData.llm?.noSpeechThreshold ?? null,
+        settingsData.llm?.lowQualityThreshold ?? null,
       ],
     )
 
@@ -345,6 +354,7 @@ export class AdvancedSettingsRepository {
         llm_provider: llmSettings.llm_provider,
         llm_model: llmSettings.llm_model,
         llm_temperature: llmSettings.llm_temperature,
+        llm_base_url: llmSettings.llm_base_url,
         transcription_prompt: llmSettings.transcription_prompt,
         editing_prompt: llmSettings.editing_prompt,
         no_speech_threshold: llmSettings.no_speech_threshold,

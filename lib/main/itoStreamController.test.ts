@@ -59,6 +59,7 @@ const mockContextGrabber = {
           llmProvider: 'openai',
           llmModel: 'gpt-4',
           llmTemperature: 0.7,
+          llmBaseUrl: null,
           transcriptionPrompt: '',
           editingPrompt: '',
         },

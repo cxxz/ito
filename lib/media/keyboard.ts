@@ -254,7 +254,10 @@ function handleDoubleTapEvent(
 
     // Check if this is a double-tap (same base key, within threshold)
     const lastBaseKey = doubleTapState.lastKey?.replace(/-left$|-right$/, '')
-    if (lastBaseKey === eventBaseKey && timeSinceLastTap < DOUBLE_TAP_THRESHOLD_MS) {
+    if (
+      lastBaseKey === eventBaseKey &&
+      timeSinceLastTap < DOUBLE_TAP_THRESHOLD_MS
+    ) {
       // Double-tap detected!
       doubleTapState.lastTapTime = 0
       doubleTapState.lastKey = null

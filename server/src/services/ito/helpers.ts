@@ -1,6 +1,6 @@
 import { HeaderValidator } from '../../validation/HeaderValidator.js'
 import { ItoContext } from './types.js'
-import { ITO_MODE_PROMPT } from './constants.js'
+import { getDefaultLlmModel, ITO_MODE_PROMPT } from './constants.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
 import { ItoMode } from '../../generated/ito_pb.js'
 import {
@@ -91,10 +91,12 @@ export function getAdvancedSettingsHeaders(headers: Headers) {
     'LLM Provider',
   )
 
+  const defaultLlmModel = getDefaultLlmModel(llmProvider)
+
   const llmModel = validateAndTransformHeaderValue(
     headers,
     'llm-model',
-    DEFAULT_ADVANCED_SETTINGS.llmModel,
+    defaultLlmModel,
     HeaderValidator.validateLlmModel,
     'LLM model',
   )

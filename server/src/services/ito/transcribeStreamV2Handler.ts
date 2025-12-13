@@ -17,7 +17,7 @@ import {
   detectItoMode,
   getPromptForMode,
 } from './helpers.js'
-import { ITO_MODE_SYSTEM_PROMPT } from './constants.js'
+import { getDefaultLlmModel, ITO_MODE_SYSTEM_PROMPT } from './constants.js'
 import type { ItoContext } from './types.js'
 import { isAbortError, createAbortError } from '../../utils/abortUtils.js'
 import {
@@ -384,6 +384,12 @@ export class TranscribeStreamV2Handler {
     asrProvider: string,
     noSpeechThreshold: number,
   ) {
+    const llmProvider = this.resolveOrDefault(
+      mergedConfig.llmSettings?.llmProvider,
+      DEFAULT_ADVANCED_SETTINGS.llmProvider,
+    )
+    const defaultLlmModel = getDefaultLlmModel(llmProvider)
+
     return {
       asrModel: this.resolveOrDefault(
         asrModel,
@@ -397,13 +403,10 @@ export class TranscribeStreamV2Handler {
         mergedConfig.llmSettings?.asrPrompt,
         DEFAULT_ADVANCED_SETTINGS.asrPrompt,
       ),
-      llmProvider: this.resolveOrDefault(
-        mergedConfig.llmSettings?.llmProvider,
-        DEFAULT_ADVANCED_SETTINGS.llmProvider,
-      ),
+      llmProvider,
       llmModel: this.resolveOrDefault(
         mergedConfig.llmSettings?.llmModel,
-        DEFAULT_ADVANCED_SETTINGS.llmModel,
+        defaultLlmModel,
       ),
       llmTemperature: this.resolveOrDefault(
         mergedConfig.llmSettings?.llmTemperature,

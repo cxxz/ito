@@ -130,6 +130,7 @@ const mockGrpcClientMethods = {
   deleteDictionaryItem: mock(() => Promise.resolve({ success: true } as any)),
   listDictionaryItems: mock(() => Promise.resolve({ items: [] as any })),
   deleteUserData: mock(() => Promise.resolve({ success: true } as any)),
+  updateAdvancedSettings: mock(() => Promise.resolve({ success: true } as any)),
 }
 
 mock.module('@connectrpc/connect', () => ({
@@ -221,7 +222,6 @@ describe('GrpcClient Business Logic Tests', () => {
   describe('Transcription Stream Business Logic', () => {
     test('should handle transcription stream with text output and side effects', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken('test-token')
       grpcClient.setMainWindow(mockElectronWindow)
 
       const transcript = 'Hello world, this is a test'
@@ -244,7 +244,6 @@ describe('GrpcClient Business Logic Tests', () => {
 
     test('should include metadata in transcription', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken('test-token')
 
       const audioStream = (async function* () {
         yield { data: new Uint8Array([1, 2, 3]) } as any
@@ -259,7 +258,6 @@ describe('GrpcClient Business Logic Tests', () => {
 
     test('if window context fails to be retrieved, it should handle gracefully', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken('test-token')
 
       const audioStream = (async function* () {
         yield { data: new Uint8Array([1, 2, 3]) } as any
@@ -273,7 +271,6 @@ describe('GrpcClient Business Logic Tests', () => {
 
     test('should handle transcription errors gracefully', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken('test-token')
       grpcClient.setMainWindow(mockElectronWindow)
 
       const error = new Error('Transcription failed')
@@ -290,7 +287,6 @@ describe('GrpcClient Business Logic Tests', () => {
 
     test('should handle vocabulary fetch errors during transcription', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken('test-token')
 
       mockDictionaryTable.findAll.mockRejectedValueOnce(
         new Error('Database error'),
@@ -308,7 +304,6 @@ describe('GrpcClient Business Logic Tests', () => {
   describe('Authentication', () => {
     test('should handle operations with no auth token gracefully', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken(null)
 
       const testNote = {
         id: 'note-123',
@@ -327,7 +322,6 @@ describe('GrpcClient Business Logic Tests', () => {
 
     test('should handle auth errors gracefully when window is destroyed', async () => {
       const { grpcClient } = await import('./grpcClient')
-      grpcClient.setAuthToken('test-token')
       grpcClient.setMainWindow(mockElectronWindow)
 
       // Mock window as destroyed
@@ -346,6 +340,40 @@ describe('GrpcClient Business Logic Tests', () => {
         grpcClient.transcribeStream(audioStream, ItoMode.TRANSCRIBE),
       ).rejects.toThrow('Unauthenticated')
       expect(mockElectronWindow.webContents.send).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Advanced Settings Business Logic', () => {
+    test('should send llm provider/base URL to server', async () => {
+      const { grpcClient } = await import('./grpcClient')
+
+      const settings = {
+        llm: {
+          asrModel: null,
+          asrProvider: null,
+          asrPrompt: null,
+          llmProvider: 'openai',
+          llmModel: null,
+          llmTemperature: null,
+          llmBaseUrl: 'https://api.openai.com/v1',
+          transcriptionPrompt: null,
+          editingPrompt: null,
+          noSpeechThreshold: null,
+        },
+        grammarServiceEnabled: false,
+        macosAccessibilityContextEnabled: false,
+      }
+
+      await grpcClient.updateAdvancedSettings(settings as any)
+
+      expect(mockGrpcClientMethods.updateAdvancedSettings).toHaveBeenCalledTimes(
+        1,
+      )
+
+      const [request] = (mockGrpcClientMethods.updateAdvancedSettings as any)
+        .mock.calls[0]
+      expect(request.llm.llmProvider).toBe('openai')
+      expect(request.llm.llmBaseUrl).toBe('https://api.openai.com/v1')
     })
   })
 })

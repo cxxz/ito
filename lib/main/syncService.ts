@@ -10,6 +10,7 @@ import mainStore from './store'
 import { STORE_KEYS } from '../constants/store-keys'
 import type { AdvancedSettings } from './store'
 import { mainWindow } from './app'
+import { DEFAULT_ADVANCED_SETTINGS } from '../constants/generated-defaults.js'
 
 const LAST_SYNCED_AT_KEY = 'lastSyncedAt'
 
@@ -259,6 +260,7 @@ export class SyncService {
         mainStore.set(STORE_KEYS.ADVANCED_SETTINGS, {
           ...currentLocalSettings,
           defaults: defaultSettings,
+          llmProviderDefaultModels: remoteSettings.llmProviderDefaultModels,
         })
 
         // Notify UI of the update
@@ -269,14 +271,67 @@ export class SyncService {
         ) {
           mainWindow.webContents.send('advanced-settings-updated')
         }
+
+        // Ensure local-only state doesn't override server-controlled defaults.
+        // - ASR provider is not user-configurable (read-only in UI): keep it unset so defaults display.
+        // - If ASR provider changes away from groq, clear legacy groq default model so provider defaults apply.
+        const updatedLocalSettings = mainStore.get(
+          STORE_KEYS.ADVANCED_SETTINGS,
+        ) as AdvancedSettings
+
+        let shouldNormalize = false
+        const normalizedLlm = { ...updatedLocalSettings.llm }
+
+        if (normalizedLlm.asrProvider !== null) {
+          normalizedLlm.asrProvider = null
+          shouldNormalize = true
+        }
+
+        if (typeof normalizedLlm.asrModel === 'string') {
+          const trimmed = normalizedLlm.asrModel.trim()
+          if (trimmed.length === 0) {
+            normalizedLlm.asrModel = null
+            shouldNormalize = true
+          }
+        }
+
+        const effectiveDefaultProvider =
+          defaultSettings.asrProvider ?? DEFAULT_ADVANCED_SETTINGS.asrProvider
+
+        if (
+          effectiveDefaultProvider !== DEFAULT_ADVANCED_SETTINGS.asrProvider &&
+          normalizedLlm.asrModel === DEFAULT_ADVANCED_SETTINGS.asrModel
+        ) {
+          normalizedLlm.asrModel = null
+          shouldNormalize = true
+        }
+
+        if (shouldNormalize) {
+          mainStore.set(STORE_KEYS.ADVANCED_SETTINGS, {
+            ...updatedLocalSettings,
+            llm: normalizedLlm,
+          })
+
+          if (
+            mainWindow &&
+            !mainWindow.isDestroyed() &&
+            !mainWindow.webContents.isDestroyed()
+          ) {
+            mainWindow.webContents.send('advanced-settings-updated')
+          }
+        }
       }
 
       // Compare timestamps to determine sync direction
       const remoteUpdatedAt = new Date(remoteSettings.updatedAt)
       const lastSyncTime = lastSyncedAt ? new Date(lastSyncedAt) : new Date(0)
 
+      // Check if local settings have pending changes (dirty flag)
+      const isDirty = mainStore.get('advancedSettingsDirty')
+
       // If remote settings were updated after last sync, pull them to local
-      if (remoteUpdatedAt > lastSyncTime) {
+      // BUT skip if local settings are dirty (pending save to server)
+      if (remoteUpdatedAt > lastSyncTime && !isDirty) {
         // Get current local settings to preserve local-only fields
         const currentLocalSettings = mainStore.get(
           STORE_KEYS.ADVANCED_SETTINGS,
@@ -290,6 +345,7 @@ export class SyncService {
             llmProvider: remoteSettings.llm?.llmProvider ?? null,
             llmModel: remoteSettings.llm?.llmModel ?? null,
             llmTemperature: remoteSettings.llm?.llmTemperature ?? null,
+            llmBaseUrl: remoteSettings.llm?.llmBaseUrl ?? null,
             transcriptionPrompt:
               remoteSettings.llm?.transcriptionPrompt ?? null,
             editingPrompt: remoteSettings.llm?.editingPrompt ?? null,
@@ -300,6 +356,7 @@ export class SyncService {
             currentLocalSettings?.grammarServiceEnabled ?? false,
           // Preserve defaults that were set earlier in this function
           defaults: currentLocalSettings?.defaults,
+          llmProviderDefaultModels: currentLocalSettings?.llmProviderDefaultModels,
           macosAccessibilityContextEnabled:
             currentLocalSettings.macosAccessibilityContextEnabled ?? false,
         }

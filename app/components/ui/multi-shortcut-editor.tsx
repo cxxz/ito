@@ -257,7 +257,8 @@ export default function MultiShortcutEditor({
                       type="button"
                       onClick={() => beginEditExisting(row)}
                       className={
-                        base + ' disabled:opacity-50 disabled:cursor-not-allowed'
+                        base +
+                        ' disabled:opacity-50 disabled:cursor-not-allowed'
                       }
                       disabled={isLockedByOther}
                     >

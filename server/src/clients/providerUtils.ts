@@ -3,6 +3,7 @@ import { ClientProvider } from './providers.js'
 import { groqClient } from './groqClient.js'
 import { cerebrasClient } from './cerebrasClient.js'
 import { aliyunClient } from './aliyunClient.js'
+import { openaiClient } from './openaiClient.js'
 import { ClientUnavailableError } from './errors.js'
 
 /**
@@ -48,6 +49,12 @@ export function getLlmProvider(providerName: string): LlmProvider {
       }
       return cerebrasClient
 
+    case ClientProvider.OPENAI:
+      if (!openaiClient || !openaiClient.isAvailable) {
+        throw new ClientUnavailableError(ClientProvider.OPENAI)
+      }
+      return openaiClient
+
     default:
       throw new ClientUnavailableError(providerName as ClientProvider)
   }
@@ -84,6 +91,10 @@ export function getAvailableLlmProviders(): ClientProvider[] {
 
   if (cerebrasClient && cerebrasClient.isAvailable) {
     providers.push(ClientProvider.CEREBRAS)
+  }
+
+  if (openaiClient && openaiClient.isAvailable) {
+    providers.push(ClientProvider.OPENAI)
   }
 
   return providers

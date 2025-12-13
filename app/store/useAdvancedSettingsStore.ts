@@ -8,6 +8,7 @@ export interface LlmSettings {
   llmProvider: string | null
   llmModel: string | null
   llmTemperature: number | null
+  llmBaseUrl: string | null
   transcriptionPrompt: string | null
   editingPrompt: string | null
   noSpeechThreshold: number | null
@@ -17,6 +18,7 @@ interface AdvancedSettingsState {
   llm: LlmSettings
   grammarServiceEnabled: boolean
   defaults?: LlmSettings
+  llmProviderDefaultModels?: Record<string, string>
   macosAccessibilityContextEnabled: boolean
   setLlmSettings: (settings: Partial<LlmSettings>) => void
   setGrammarServiceEnabled: (enabled: boolean) => void
@@ -34,6 +36,7 @@ const getInitialState = () => {
     grammarServiceEnabled:
       storedAdvancedSettings.grammarServiceEnabled ?? false,
     defaults: storedAdvancedSettings.defaults,
+    llmProviderDefaultModels: storedAdvancedSettings.llmProviderDefaultModels,
     macosAccessibilityContextEnabled:
       storedAdvancedSettings.macosAccessibilityContextEnabled ?? false,
   }

@@ -28,6 +28,7 @@ export const DEFAULT_ADVANCED_SETTINGS = {
   llmProvider: '${DEFAULT_ADVANCED_SETTINGS.llmProvider}',
   llmModel: '${DEFAULT_ADVANCED_SETTINGS.llmModel}',
   llmTemperature: ${DEFAULT_ADVANCED_SETTINGS.llmTemperature},
+  llmBaseUrl: '${DEFAULT_ADVANCED_SETTINGS.llmBaseUrl}',
   
   // Prompt settings
   transcriptionPrompt: \`${DEFAULT_ADVANCED_SETTINGS.transcriptionPrompt.replace(/`/g, '\\`')}\`,

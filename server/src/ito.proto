@@ -66,6 +66,7 @@ enum ClientProvider {
   GROQ = 0;
   CEREBRAS = 1;
   ALIYUN = 2;
+  OPENAI = 3;
 }
 
 enum ErrorType {
@@ -261,6 +262,7 @@ message LlmSettings {
   optional string editing_prompt = 8;
   optional float no_speech_threshold = 9;
   optional float low_quality_threshold = 10;
+  optional string llm_base_url = 11;
 }
 
 message AdvancedSettings {
@@ -270,6 +272,7 @@ message AdvancedSettings {
   string updated_at = 4;
   LlmSettings llm = 5;
   LlmSettings default = 6;
+  map<string, string> llm_provider_default_models = 7;
 }
 
 message GetAdvancedSettingsRequest {

@@ -32,7 +32,11 @@ import { ConnectError, Code } from '@connectrpc/connect'
 import { kUser } from '../../auth/userContext.js'
 import { transcribeStreamV2Handler } from './transcribeStreamV2Handler.js'
 import { transcribeStreamHandler } from './transcribeStreamHandler.js'
-import { DEFAULT_ADVANCED_SETTINGS_STRUCT } from './constants.js'
+import {
+  getDefaultAdvancedSettingsStruct,
+  getProviderDefaultLlmModels,
+} from './constants.js'
+import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
 
 function dbToNotePb(dbNote: DbNote): Note {
   return create(NoteSchema, {
@@ -81,6 +85,29 @@ function dbToDictionaryItemPb(
 function dbToAdvancedSettingsPb(
   dbAdvancedSettings: DbAdvancedSettings,
 ): AdvancedSettings {
+  const toOptionalString = (
+    value: string | null | undefined,
+  ): string | undefined => {
+    if (value === null || value === undefined) return undefined
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+
+  const resolvedDefaults = getDefaultAdvancedSettingsStruct()
+  const dbAsrProvider = toOptionalString(dbAdvancedSettings.llm.asr_provider)
+  let asrModel = toOptionalString(dbAdvancedSettings.llm.asr_model)
+
+  // Backwards-compat: if we have a legacy default ASR model stored (from before
+  // "NULL means use defaults"), treat it as unset so provider-specific defaults
+  // (e.g. aliyun -> qwen3-asr-flash) can take effect.
+  if (asrModel === DEFAULT_ADVANCED_SETTINGS.asrModel) {
+    const currentProvider = resolvedDefaults.asrProvider
+    const legacyDefaultProvider = DEFAULT_ADVANCED_SETTINGS.asrProvider
+    if (!dbAsrProvider || currentProvider !== legacyDefaultProvider) {
+      asrModel = undefined
+    }
+  }
+
   return create(AdvancedSettingsSchema, {
     id: dbAdvancedSettings.id,
     userId: dbAdvancedSettings.user_id,
@@ -88,21 +115,24 @@ function dbToAdvancedSettingsPb(
     updatedAt: dbAdvancedSettings.updated_at.toISOString(),
     llm: create(LlmSettingsSchema, {
       // Convert null to undefined so protobuf omits unset optional fields
-      asrModel: dbAdvancedSettings.llm.asr_model ?? undefined,
-      asrPrompt: dbAdvancedSettings.llm.asr_prompt ?? undefined,
-      asrProvider: dbAdvancedSettings.llm.asr_provider ?? undefined,
-      llmProvider: dbAdvancedSettings.llm.llm_provider ?? undefined,
+      asrModel,
+      asrPrompt: toOptionalString(dbAdvancedSettings.llm.asr_prompt),
+      // ASR provider is controlled by server environment, not user settings.
+      asrProvider: undefined,
+      llmProvider: toOptionalString(dbAdvancedSettings.llm.llm_provider),
       llmTemperature: dbAdvancedSettings.llm.llm_temperature ?? undefined,
-      llmModel: dbAdvancedSettings.llm.llm_model ?? undefined,
+      llmModel: toOptionalString(dbAdvancedSettings.llm.llm_model),
+      llmBaseUrl: toOptionalString(dbAdvancedSettings.llm.llm_base_url),
       transcriptionPrompt:
-        dbAdvancedSettings.llm.transcription_prompt ?? undefined,
-      editingPrompt: dbAdvancedSettings.llm.editing_prompt ?? undefined,
+        toOptionalString(dbAdvancedSettings.llm.transcription_prompt),
+      editingPrompt: toOptionalString(dbAdvancedSettings.llm.editing_prompt),
       noSpeechThreshold:
         dbAdvancedSettings.llm.no_speech_threshold ?? undefined,
       lowQualityThreshold:
         dbAdvancedSettings.llm.low_quality_threshold ?? undefined,
     }),
-    default: DEFAULT_ADVANCED_SETTINGS_STRUCT,
+    default: resolvedDefaults,
+    llmProviderDefaultModels: getProviderDefaultLlmModels(),
   })
 }
 
@@ -316,7 +346,8 @@ export default (router: ConnectRouter) => {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           llm: create(LlmSettingsSchema, {}),
-          default: DEFAULT_ADVANCED_SETTINGS_STRUCT,
+          default: getDefaultAdvancedSettingsStruct(),
+          llmProviderDefaultModels: getProviderDefaultLlmModels(),
         })
       }
 

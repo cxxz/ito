@@ -355,9 +355,18 @@ export function registerIPC() {
 
   handleIPC('update-advanced-settings', async (_e, advancedSettings) => {
     console.log('Updating advanced settings:', advancedSettings)
-    const { grpcClient } = await import('../clients/grpcClient')
-    const result = await grpcClient.updateAdvancedSettings(advancedSettings)
-    return result
+    // Mark as dirty before the update to prevent sync from overwriting local changes
+    store.set('advancedSettingsDirty', true)
+    try {
+      const { grpcClient } = await import('../clients/grpcClient')
+      const result = await grpcClient.updateAdvancedSettings(advancedSettings)
+      // Clear dirty flag after successful update
+      store.set('advancedSettingsDirty', false)
+      return result
+    } catch (error) {
+      // Keep dirty flag set so sync doesn't overwrite unsaved local changes
+      throw error
+    }
   })
 
   // Server health check

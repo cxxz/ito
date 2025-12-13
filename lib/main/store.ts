@@ -74,6 +74,7 @@ export interface AdvancedSettings {
   llm: LlmSettings
   grammarServiceEnabled: boolean
   defaults?: LlmSettings
+  llmProviderDefaultModels?: Record<string, string>
   macosAccessibilityContextEnabled: boolean
 }
 
@@ -160,6 +161,7 @@ export const defaultValues: AppStore = {
       llmProvider: null,
       llmTemperature: null,
       llmModel: null,
+      llmBaseUrl: null,
       transcriptionPrompt: null,
       editingPrompt: null,
       noSpeechThreshold: null,
@@ -198,6 +200,8 @@ const cache: Record<string, any> = {
   [STORE_KEYS.ID_TOKEN]: defaultValues.idToken,
   [STORE_KEYS.ACCESS_TOKEN]: defaultValues.accessToken,
   appliedMigrations: defaultValues.appliedMigrations,
+  // Flag to track if advanced settings have pending local changes (not yet saved to server)
+  advancedSettingsDirty: false,
 }
 
 const isObject = (v: any) =>

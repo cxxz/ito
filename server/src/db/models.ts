@@ -37,6 +37,7 @@ interface LlmSettingsBase {
   llm_provider: string | null
   llm_model: string | null
   llm_temperature: number | null
+  llm_base_url: string | null
   transcription_prompt: string | null
   editing_prompt: string | null
   no_speech_threshold: number | null

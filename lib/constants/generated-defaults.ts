@@ -14,6 +14,7 @@ export const DEFAULT_ADVANCED_SETTINGS = {
   llmProvider: 'cerebras',
   llmModel: 'qwen-3-235b-a22b-instruct-2507',
   llmTemperature: 0,
+  llmBaseUrl: '',
 
   // Prompt settings
   transcriptionPrompt: `You are a real-time Transcript Polisher assistant. Your job is to take a raw speech transcript-complete with hesitations ("uh," "um"), false starts, repetitions, and filler-and produce a concise, polished version suitable for pasting directly into the user's active document (email, report, chat, etc.).

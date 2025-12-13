@@ -182,10 +182,13 @@ describe('HeaderValidator', () => {
   describe('validateLlmProvider', () => {
     it('should return valid LLM provider names', () => {
       expect(HeaderValidator.validateLlmProvider('groq')).toBe('groq')
+      expect(HeaderValidator.validateLlmProvider('cerebras')).toBe('cerebras')
+      expect(HeaderValidator.validateLlmProvider('openai')).toBe('openai')
     })
 
     it('should trim whitespace from LLM providers', () => {
       expect(HeaderValidator.validateLlmProvider('  groq  ')).toBe('groq')
+      expect(HeaderValidator.validateLlmProvider('  openai  ')).toBe('openai')
     })
 
     it('should throw ConnectError for invalid LLM providers', () => {
@@ -193,9 +196,6 @@ describe('HeaderValidator', () => {
         HeaderValidator.validateLlmProvider('invalid-provider'),
       ).toThrow(ConnectError)
       expect(() => HeaderValidator.validateLlmProvider('')).toThrow(
-        ConnectError,
-      )
-      expect(() => HeaderValidator.validateLlmProvider('openai')).toThrow(
         ConnectError,
       )
     })

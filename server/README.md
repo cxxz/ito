@@ -43,6 +43,18 @@ GROQ_API_KEY=your_groq_api_key_here
 # CEREBRAS API Key (Not Required)
 CEREBRAS_API_KEY=your_CEREBRAS_API_KEY_here
 
+# Optional: ASR defaults (affects app "Settings > Advanced" defaults)
+ASR_PROVIDER="groq"  # Options: groq, aliyun
+ASR_MODEL=""         # Optional: override ASR model (e.g. "qwen3-asr-flash" for aliyun)
+
+# Optional: default LLM models per provider (affects app "Settings > Advanced" defaults)
+OPENAI_DEFAULT_LLM="gpt-5-mini"  # defaults to gpt-5-mini
+GROQ_DEFAULT_LLM=""              # defaults to moonshotai/kimi-k2-instruct-0905
+CEREBRAS_DEFAULT_LLM=""          # defaults to qwen-3-235b-a22b-instruct-2507
+
+# Optional: OpenAI-compatible base URL
+OPENAI_BASE_URL=""  # defaults to https://api.openai.com/v1
+
 # Authentication (Optional - set to false for local development)
 REQUIRE_AUTH=false
 AUTH0_DOMAIN=your_auth0_domain.auth0.com
@@ -182,23 +194,38 @@ bun run test-client      # Run gRPC client tests
 
 ### Environment Variables
 
-| Variable               | Required | Default     | Description                                 |
-| ---------------------- | -------- | ----------- | ------------------------------------------- |
-| `DB_HOST`              | Yes      | `localhost` | PostgreSQL host                             |
-| `DB_PORT`              | Yes      | `5432`      | PostgreSQL port                             |
-| `DB_USER`              | Yes      | -           | Database username                           |
-| `DB_PASS`              | Yes      | -           | Database password                           |
-| `DB_NAME`              | Yes      | -           | Database name                               |
-| `BLOB_STORAGE_BUCKET`  | Yes      | -           | S3 bucket name for audio storage            |
-| `S3_ENDPOINT`          | No       | -           | S3 endpoint (for MinIO/local development)   |
-| `S3_ACCESS_KEY_ID`     | No       | -           | S3 access key (for MinIO/local development) |
-| `S3_SECRET_ACCESS_KEY` | No       | -           | S3 secret key (for MinIO/local development) |
-| `S3_FORCE_PATH_STYLE`  | No       | `false`     | Use path-style S3 URLs (required for MinIO) |
-| `GROQ_API_KEY`         | Yes      | -           | GROQ API key for transcription              |
-| `CEREBRAS_API_KEY`     | No       | -           | CEREBRAS API key for reasoning              |
-| `REQUIRE_AUTH`         | No       | `false`     | Enable Auth0 authentication                 |
-| `AUTH0_DOMAIN`         | No\*     | -           | Auth0 domain (\*required if auth enabled)   |
-| `AUTH0_AUDIENCE`       | No\*     | -           | Auth0 audience (\*required if auth enabled) |
+| Variable               | Required | Default                         | Description                                                     |
+| ---------------------- | -------- | ------------------------------- | --------------------------------------------------------------- |
+| `DB_HOST`              | Yes      | `localhost`                     | PostgreSQL host                                                 |
+| `DB_PORT`              | Yes      | `5432`                          | PostgreSQL port                                                 |
+| `DB_USER`              | Yes      | -                               | Database username                                               |
+| `DB_PASS`              | Yes      | -                               | Database password                                               |
+| `DB_NAME`              | Yes      | -                               | Database name                                                   |
+| `BLOB_STORAGE_BUCKET`  | Yes      | -                               | S3 bucket name for audio storage                                |
+| `S3_ENDPOINT`          | No       | -                               | S3 endpoint (for MinIO/local development)                       |
+| `S3_ACCESS_KEY_ID`     | No       | -                               | S3 access key (for MinIO/local development)                     |
+| `S3_SECRET_ACCESS_KEY` | No       | -                               | S3 secret key (for MinIO/local development)                     |
+| `S3_FORCE_PATH_STYLE`  | No       | `false`                         | Use path-style S3 URLs (required for MinIO)                     |
+| `GROQ_API_KEY`         | Yes      | -                               | GROQ API key for transcription/LLM services                      |
+| `CEREBRAS_API_KEY`     | No       | -                               | CEREBRAS API key for reasoning                                  |
+| `OPENAI_API_KEY`       | No       | -                               | OpenAI API key (enables OpenAI LLM provider)                     |
+| `OPENAI_BASE_URL`      | No       | `https://api.openai.com/v1`     | OpenAI-compatible API base URL                                  |
+| `ASR_PROVIDER`         | No       | `groq`                          | Default ASR provider shown in app Settings → Advanced            |
+| `ASR_MODEL`            | No       | provider default                | Optional ASR model override                                      |
+| `OPENAI_DEFAULT_LLM`   | No       | `gpt-5-mini`                    | Default LLM model when LLM provider is `openai`                  |
+| `GROQ_DEFAULT_LLM`     | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`                 |
+| `CEREBRAS_DEFAULT_LLM` | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras`             |
+| `REQUIRE_AUTH`         | No       | `false`                         | Enable Auth0 authentication                                      |
+| `AUTH0_DOMAIN`         | No\*     | -                               | Auth0 domain (\*required if auth enabled)                        |
+| `AUTH0_AUDIENCE`       | No\*     | -                               | Auth0 audience (\*required if auth enabled)                      |
+
+### How Defaults Show Up In The App
+
+- The server treats `ASR_PROVIDER` and provider-specific LLM defaults as **server-controlled defaults** that are returned via `GetAdvancedSettings`.
+- In the app UI (**Settings → Advanced**):
+  - Fields stored as `null` mean “use server defaults”.
+  - Selecting an **LLM Provider** resets **LLM Model** to default; the displayed model comes from `OPENAI_DEFAULT_LLM` / `GROQ_DEFAULT_LLM` / `CEREBRAS_DEFAULT_LLM` when set, otherwise the built-in defaults.
+  - ASR provider is shown from server defaults (it is not intended to be a user-controlled setting in the UI).
 
 ### Database & Storage Configuration
 

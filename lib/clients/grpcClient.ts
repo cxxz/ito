@@ -405,18 +405,6 @@ class GrpcClient {
   async updateAdvancedSettings(
     settings: AdvancedSettings,
   ): Promise<AdvancedSettingsPb | null> {
-    // Check if user is self-hosted and skip server sync
-    const userId = getCurrentUserId()
-    const isSelfHosted = userId === 'self-hosted'
-
-    if (isSelfHosted) {
-      console.log(
-        'Self-hosted user detected, skipping server sync for advanced settings',
-      )
-      // Return null for self-hosted users since settings are stored locally
-      return null
-    }
-
     console.log('Updating advanced settings:', settings.llm)
 
     return this.withRetry(async () => {
@@ -427,6 +415,7 @@ class GrpcClient {
           asrPrompt: settings.llm.asrPrompt ?? undefined,
           llmProvider: settings.llm.llmProvider ?? undefined,
           llmModel: settings.llm.llmModel ?? undefined,
+          llmBaseUrl: settings.llm.llmBaseUrl ?? undefined,
           transcriptionPrompt: settings.llm.transcriptionPrompt ?? undefined,
           editingPrompt: settings.llm.editingPrompt ?? undefined,
           llmTemperature: settings.llm.llmTemperature ?? undefined,

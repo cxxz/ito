@@ -28,6 +28,14 @@ const modelProviderLengthLimit = 30
 const floatLengthLimit = 4
 const asrPromptLengthLimit = 100
 const llmPromptLengthLimit = 1500
+const urlLengthLimit = 256
+
+// Provider-specific default LLM models
+const FALLBACK_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  openai: 'gpt-5-mini',
+  groq: 'moonshotai/kimi-k2-instruct-0905',
+  cerebras: 'qwen-3-235b-a22b-instruct-2507',
+}
 
 const llmSettingsConfig: LlmSettingConfig[] = [
   {
@@ -61,7 +69,14 @@ const llmSettingsConfig: LlmSettingConfig[] = [
     description: 'LLM provider for text generation tasks',
     maxLength: modelProviderLengthLimit,
     isSelect: true,
-    options: ['groq', 'cerebras'],
+    options: ['groq', 'cerebras', 'openai'],
+  },
+  {
+    name: 'llmBaseUrl',
+    label: 'Endpoint URL (for openai provider)',
+    placeholder: 'https://api.openai.com/v1',
+    description: 'API endpoint URL for OpenAI-compatible providers',
+    maxLength: urlLengthLimit,
   },
   {
     name: 'llmModel',
@@ -204,6 +219,7 @@ export default function AdvancedSettingsContent() {
   const {
     llm,
     defaults,
+    llmProviderDefaultModels,
     grammarServiceEnabled,
     macosAccessibilityContextEnabled,
     setLlmSettings,
@@ -212,24 +228,48 @@ export default function AdvancedSettingsContent() {
   } = useAdvancedSettingsStore()
   const windowContext = useWindowContext()
   const debounceRef = useRef<NodeJS.Timeout>(null)
+  const pendingSaveRef = useRef<{
+    llm: LlmSettings
+    grammarServiceEnabled: boolean
+    macosAccessibilityContextEnabled: boolean
+  } | null>(null)
 
   // Helper to resolve null to actual default value for display
   const getDisplayValue = useCallback(
     (key: keyof LlmSettings): string | number | null => {
       const value = llm[key]
-      if (value === null && defaults) {
-        return defaults[key] ?? null
+      if (value === null) {
+        if (key === 'llmModel') {
+          const resolvedProvider = llm.llmProvider ?? defaults?.llmProvider
+          if (resolvedProvider) {
+            const providerDefaults =
+              llmProviderDefaultModels ?? FALLBACK_PROVIDER_DEFAULT_MODELS
+            const providerDefaultModel = providerDefaults[resolvedProvider]
+            if (providerDefaultModel) {
+              return providerDefaultModel
+            }
+          }
+        }
+
+        if (defaults) {
+          return defaults[key] ?? null
+        }
       }
       return value
     },
-    [llm, defaults],
+    [llm, defaults, llmProviderDefaultModels],
   )
 
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-      }
+  const flushPendingSave = useCallback(async () => {
+    const pending = pendingSaveRef.current
+    if (!pending) return
+
+    pendingSaveRef.current = null
+
+    try {
+      await window.api.updateAdvancedSettings(pending)
+    } catch (error) {
+      console.error('Failed to update advanced settings:', error)
     }
   }, [])
 
@@ -243,17 +283,29 @@ export default function AdvancedSettingsContent() {
         clearTimeout(debounceRef.current)
       }
 
-      debounceRef.current = setTimeout(async () => {
-        const settingsToSave = {
-          llm: nextLlm,
-          grammarServiceEnabled: nextGrammarEnabled,
-          macosAccessibilityContextEnabled: nextMacosAccessibilityEnabled,
-        }
-        await window.api.updateAdvancedSettings(settingsToSave)
+      window.electron.store.set('advancedSettingsDirty', true)
+      pendingSaveRef.current = {
+        llm: nextLlm,
+        grammarServiceEnabled: nextGrammarEnabled,
+        macosAccessibilityContextEnabled: nextMacosAccessibilityEnabled,
+      }
+
+      debounceRef.current = setTimeout(() => {
+        void flushPendingSave()
       }, 1000)
     },
-    [],
+    [flushPendingSave],
   )
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+
+      void flushPendingSave()
+    }
+  }, [flushPendingSave])
 
   const handleInputChange = useCallback(
     (
@@ -277,8 +329,16 @@ export default function AdvancedSettingsContent() {
         newValue = rawValue
       }
 
-      const updatedLlm = { ...llm, [config.name]: newValue }
-      setLlmSettings({ [config.name]: newValue })
+      let updatedLlm = { ...llm, [config.name]: newValue }
+
+      // Auto-update llmModel when llmProvider changes
+      if (config.name === 'llmProvider' && typeof newValue === 'string') {
+        updatedLlm = { ...updatedLlm, llmModel: null }
+        setLlmSettings({ [config.name]: newValue, llmModel: null })
+      } else {
+        setLlmSettings({ [config.name]: newValue })
+      }
+
       scheduleAdvancedSettingsUpdate(
         updatedLlm,
         grammarServiceEnabled,
@@ -334,6 +394,7 @@ export default function AdvancedSettingsContent() {
       llmProvider: null,
       llmModel: null,
       llmTemperature: null,
+      llmBaseUrl: null,
       transcriptionPrompt: null,
       editingPrompt: null,
       noSpeechThreshold: null,
