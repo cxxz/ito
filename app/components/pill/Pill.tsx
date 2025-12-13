@@ -9,6 +9,7 @@ import { X, StopSquare } from '@mynaui/icons-react'
 import { AudioBars } from './contents/AudioBars'
 import { PreviewAudioBars } from './contents/PreviewAudioBars'
 import { LoadingAnimation } from './contents/LoadingAnimation'
+import { RecordingTimer } from './contents/RecordingTimer'
 import { useAudioStore } from '@/app/store/useAudioStore'
 import { TooltipButton } from './contents/TooltipButton'
 import { analytics, ANALYTICS_EVENTS } from '../analytics'
@@ -92,6 +93,9 @@ const Pill = () => {
   // Use refs for mutable values to avoid stale closures in IPC handlers
   const volumeHistoryRef = useRef<number[]>([])
   const lastVolumeUpdateRef = useRef(0)
+  // Timer state for recording duration
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // Listen for recording state changes from the main process
@@ -194,14 +198,39 @@ const Pill = () => {
     }
   }, [recordingMode])
 
+  // Timer effect for recording duration
+  useEffect(() => {
+    const anyRecordingActive = isRecording || isManualRecording
+    if (anyRecordingActive) {
+      // Start timer
+      setElapsedSeconds(0)
+      timerIntervalRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1)
+      }, 1000)
+    } else {
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
+      setElapsedSeconds(0)
+    }
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+    }
+  }, [isRecording, isManualRecording])
+
   // Define dimensions for different states
   const idleWidth = 36
   const idleHeight = 8
   const hoveredWidth = 84
   const hoveredHeight = 32
-  const recordingWidth = 84
+  const recordingWidth = 120
   const recordingHeight = 32
-  const manualRecordingWidth = 112
+  const manualRecordingWidth = 148
   const manualRecordingHeight = 32
   const processingWidth = 84
   const processingHeight = 32
@@ -346,6 +375,11 @@ const Pill = () => {
             barColor={getAudioBarColor(recordingMode)}
           />
 
+          <RecordingTimer
+            elapsedSeconds={elapsedSeconds}
+            color={getAudioBarColor(recordingMode)}
+          />
+
           <TooltipButton
             onClick={handleStop}
             icon={<StopSquare width={14} height={14} color="#ef4444" />}
@@ -357,10 +391,22 @@ const Pill = () => {
 
     if (anyRecording) {
       return (
-        <AudioBars
-          volumeHistory={volumeHistory}
-          barColor={getAudioBarColor(recordingMode)}
-        />
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <AudioBars
+            volumeHistory={volumeHistory}
+            barColor={getAudioBarColor(recordingMode)}
+          />
+          <RecordingTimer
+            elapsedSeconds={elapsedSeconds}
+            color={getAudioBarColor(recordingMode)}
+          />
+        </div>
       )
     }
 
