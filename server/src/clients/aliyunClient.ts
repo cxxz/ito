@@ -10,6 +10,7 @@ import { ClientProvider } from './providers.js'
 import { LlmProvider } from './llmProvider.js'
 import { TranscriptionOptions } from './asrConfig.js'
 import { IntentTranscriptionOptions } from './intentTranscriptionConfig.js'
+import { createTranscriptionPrompt } from '../prompts/transcription.js'
 
 // Load environment variables from .env file
 dotenv.config()
@@ -17,6 +18,8 @@ dotenv.config()
 const ALIYUN_API_URL =
   'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
 const DEFAULT_ASR_MODEL = 'qwen3-asr-flash'
+
+export const itoVocabulary = ['LLM', 'Claude']
 
 interface ContentItem {
   text?: string
@@ -122,13 +125,18 @@ class AliyunClient implements LlmProvider {
       const base64Audio = audioBuffer.toString('base64')
       const dataUrl = `data:audio/wav;base64,${base64Audio}`
 
+      // Build vocabulary prompt for context biasing
+      const vocabulary = options?.vocabulary
+      const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
+      const transcriptionPrompt = createTranscriptionPrompt(fullVocabulary)
+
       const payload: RequestPayload = {
         model: asrModel,
         input: {
           messages: [
             {
               role: 'system',
-              content: [{ text: '' }],
+              content: [{ text: transcriptionPrompt }],
             },
             {
               role: 'user',
@@ -142,6 +150,25 @@ class AliyunClient implements LlmProvider {
           },
         },
       }
+
+      console.log(
+        'Aliyun request payload:',
+        JSON.stringify(
+          {
+            ...payload,
+            input: {
+              messages: payload.input.messages.map((m) => ({
+                ...m,
+                content: m.content.map((c) =>
+                  c.audio ? { audio: '[BASE64_AUDIO_OMITTED]' } : c,
+                ),
+              })),
+            },
+          },
+          null,
+          2,
+        ),
+      )
 
       const response = await fetch(ALIYUN_API_URL, {
         method: 'POST',
