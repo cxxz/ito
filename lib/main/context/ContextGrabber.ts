@@ -31,7 +31,7 @@ export class ContextGrabber {
     console.log('[ContextGrabber] Gathering context for mode:', mode)
 
     // Get vocabulary words from dictionary
-    const vocabularyWords = await this.getVocabulary()
+    const dictionaryVocabulary = await this.getVocabulary()
 
     // Get active window context
     const { windowTitle, appName } = await timingCollector.timeAsync(
@@ -39,8 +39,26 @@ export class ContextGrabber {
       async () => await this.getWindowContext(),
     )
 
-    // Get selected text if in EDIT mode
+    // Get selected text if in EDIT mode (used for replacement logic)
     const contextText = await this.getContextText(mode)
+
+    // Get selected text for vocabulary hints (works in ALL modes)
+    // If we already have contextText (EDIT mode), reuse it; otherwise read separately
+    const selectedTextForVocab =
+      contextText || (await this.getSelectedTextForVocabulary())
+
+    // Extract vocabulary words from selected text as temporary hints
+    const selectedTextVocabulary =
+      this.extractVocabularyFromText(selectedTextForVocab)
+    if (selectedTextVocabulary.length > 0) {
+      console.log(
+        '[ContextGrabber] Extracted vocabulary from selected text:',
+        selectedTextVocabulary,
+      )
+    }
+
+    // Combine dictionary vocabulary with selected text vocabulary
+    const vocabularyWords = [...dictionaryVocabulary, ...selectedTextVocabulary]
 
     // Get advanced settings
     const advancedSettings = getAdvancedSettings()
@@ -66,6 +84,40 @@ export class ContextGrabber {
     } catch (error) {
       log.error('[ContextGrabber] Error getting vocabulary:', error)
       return []
+    }
+  }
+
+  /**
+   * Extract vocabulary words from selected text to use as temporary hints for ASR.
+   * Splits text by common separators (comma, semicolon, newline) and validates each word.
+   */
+  private extractVocabularyFromText(text: string): string[] {
+    if (!text || text.trim().length === 0) return []
+
+    // Split by common separators (comma, semicolon, newline)
+    const words = text
+      .split(/[,;\n]+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 0 && w.length <= 50) // Reasonable word length
+      .filter(w => /^[a-zA-Z0-9\-_.\s']+$/.test(w)) // Match server validation regex
+
+    return [...new Set(words)] // Deduplicate
+  }
+
+  /**
+   * Get selected text for vocabulary hints - works in ALL modes.
+   * This is separate from getContextText which only works in EDIT mode.
+   */
+  private async getSelectedTextForVocabulary(): Promise<string> {
+    try {
+      const text = await getSelectedTextString()
+      return text && text.trim().length > 0 ? text : ''
+    } catch (error) {
+      log.error(
+        '[ContextGrabber] Error getting selected text for vocabulary:',
+        error,
+      )
+      return ''
     }
   }
 
