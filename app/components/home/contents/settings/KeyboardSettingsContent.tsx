@@ -47,7 +47,7 @@ export default function KeyboardSettingsContent() {
               <div className="text-sm font-medium mb-2">Keyboard Shortcut</div>
               <div className="text-xs text-gray-600 mb-4">
                 {transcribeTriggerType === 'double-tap'
-                  ? 'Double-tap the key to start recording, double-tap again to stop and transcribe.'
+                  ? 'Double-tap the Control key to start recording, double-tap again to stop and transcribe.'
                   : 'Press and hold the keys to record, release to stop and transcribe.'}
               </div>
 
@@ -65,6 +65,7 @@ export default function KeyboardSettingsContent() {
             <MultiShortcutEditor
               shortcuts={transcribeShortcuts}
               mode={ItoMode.TRANSCRIBE}
+              disabled={transcribeTriggerType === 'double-tap'}
             />
           </div>
           <div className="flex gap-4 justify-between">

@@ -21,6 +21,7 @@ type Props = {
   className?: string
   keySize?: number
   maxShortcutsPerMode?: number
+  disabled?: boolean // When true, hides edit/delete/add buttons (read-only display)
 }
 
 const MAX_KEYS_PER_SHORTCUT = 5
@@ -30,6 +31,7 @@ export default function MultiShortcutEditor({
   mode,
   className = '',
   maxShortcutsPerMode = 5,
+  disabled = false,
 }: Props) {
   const {
     createKeyboardShortcut,
@@ -240,28 +242,30 @@ export default function MultiShortcutEditor({
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                {editingId === row.id ? (
-                  <button
-                    type="button"
-                    onClick={() => saveEdit(row)}
-                    className={base}
-                  >
-                    <Check className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => beginEditExisting(row)}
-                    className={
-                      base + ' disabled:opacity-50 disabled:cursor-not-allowed'
-                    }
-                    disabled={isLockedByOther}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+              {!disabled && (
+                <div className="flex items-center gap-2">
+                  {editingId === row.id ? (
+                    <button
+                      type="button"
+                      onClick={() => saveEdit(row)}
+                      className={base}
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => beginEditExisting(row)}
+                      className={
+                        base + ' disabled:opacity-50 disabled:cursor-not-allowed'
+                      }
+                      disabled={isLockedByOther}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {editingId === row.id && (error || temporaryError) && (
               <div className="mt-1 text-xs text-red-500">
@@ -272,38 +276,42 @@ export default function MultiShortcutEditor({
         )
       })}
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => {
-            const lastRow = rows.at(-1)
-            if (lastRow) {
-              removeKeyboardShortcut(lastRow.id)
-            }
-          }}
-          hidden={isMinimum}
-          className="ml-auto text-red-400 hover:underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isLockedByOther}
-        >
-          Delete
-        </button>
-      </div>
+      {!disabled && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              const lastRow = rows.at(-1)
+              if (lastRow) {
+                removeKeyboardShortcut(lastRow.id)
+              }
+            }}
+            hidden={isMinimum}
+            className="ml-auto text-red-400 hover:underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isLockedByOther}
+          >
+            Delete
+          </button>
+        </div>
+      )}
 
       {/* Add new */}
-      <div className="mt-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => {
-            if (isLockedByOther) return
-            addNew()
-          }}
-          hidden={isAtLimit}
-          className="rounded-md border border-neutral-300 py-1 px-2 text-md text-neutral-800 disabled:opacity-50 hover:bg-neutral-50 disabled:cursor-not-allowed"
-          disabled={isLockedByOther}
-        >
-          Add another
-        </button>
-      </div>
+      {!disabled && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              if (isLockedByOther) return
+              addNew()
+            }}
+            hidden={isAtLimit}
+            className="rounded-md border border-neutral-300 py-1 px-2 text-md text-neutral-800 disabled:opacity-50 hover:bg-neutral-50 disabled:cursor-not-allowed"
+            disabled={isLockedByOther}
+          >
+            Add another
+          </button>
+        </div>
+      )}
     </div>
   )
 }
