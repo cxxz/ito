@@ -6,6 +6,7 @@ use rdev::{grab, Event, EventType, Key};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::{self, BufRead, Write};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -30,19 +31,20 @@ enum Command {
     RegisterHotkeys { hotkeys: Vec<HotkeyCombo> },
 }
 
-// Global state for registered hotkeys and currently pressed keys
-#[allow(static_mut_refs)]
-static mut REGISTERED_HOTKEYS: Vec<HotkeyCombo> = Vec::new();
-#[allow(static_mut_refs)]
-static mut CURRENTLY_PRESSED: Vec<String> = Vec::new();
+#[derive(Default)]
+struct ListenerState {
+    registered_hotkeys: Vec<HotkeyCombo>,
+    currently_pressed: Vec<String>,
+    cmd_pressed: bool,
+    ctrl_pressed: bool,
+    copy_in_progress: bool,
+}
 
-// Global state for tracking modifier keys to detect Cmd+C/Ctrl+C combinations
-#[allow(static_mut_refs)]
-static mut CMD_PRESSED: bool = false;
-#[allow(static_mut_refs)]
-static mut CTRL_PRESSED: bool = false;
-#[allow(static_mut_refs)]
-static mut COPY_IN_PROGRESS: bool = false;
+static LISTENER_STATE: OnceLock<Mutex<ListenerState>> = OnceLock::new();
+
+fn listener_state() -> &'static Mutex<ListenerState> {
+    LISTENER_STATE.get_or_init(|| Mutex::new(ListenerState::default()))
+}
 
 /// Prevents macOS App Nap from suspending this process.
 /// Returns an activity token that must be retained for the entire process
@@ -112,32 +114,29 @@ fn main() {
 
 fn handle_command(command: Command) {
     match command {
-        Command::RegisterHotkeys { hotkeys } => unsafe {
-            REGISTERED_HOTKEYS = hotkeys.clone();
-        },
+        Command::RegisterHotkeys { hotkeys } => {
+            if let Ok(mut state) = listener_state().lock() {
+                state.registered_hotkeys = hotkeys;
+            }
+        }
     }
-    io::stdout().flush().unwrap();
+    let _ = io::stdout().flush();
 }
 
 // Check if current pressed keys match any registered hotkey
-fn should_block() -> bool {
-    unsafe {
-        // Check each registered hotkey
-        for hotkey in &REGISTERED_HOTKEYS {
-            // A hotkey blocks when ALL its keys are currently pressed
-            let all_pressed = hotkey
-                .keys
-                .iter()
-                .all(|key| CURRENTLY_PRESSED.contains(key));
+fn should_block(registered_hotkeys: &[HotkeyCombo], currently_pressed: &[String]) -> bool {
+    // Check each registered hotkey
+    for hotkey in registered_hotkeys {
+        // A hotkey blocks when ALL its keys are currently pressed
+        let all_pressed = hotkey.keys.iter().all(|key| currently_pressed.contains(key));
 
-            let same_length = hotkey.keys.len() == CURRENTLY_PRESSED.len();
+        let same_length = hotkey.keys.len() == currently_pressed.len();
 
-            if all_pressed && !hotkey.keys.is_empty() && same_length {
-                return true;
-            }
+        if all_pressed && !hotkey.keys.is_empty() && same_length {
+            return true;
         }
-        false
     }
+    false
 }
 
 fn callback(event: Event) -> Option<Event> {
@@ -148,15 +147,6 @@ fn callback(event: Event) -> Option<Event> {
             // Check for copy combinations before updating modifier states
             // Ignore Cmd+C (macOS) and Ctrl+C (Windows/Linux) combinations to prevent
             // feedback loops with selected-text-reader
-            if matches!(key, Key::KeyC) && unsafe { CMD_PRESSED || CTRL_PRESSED } {
-                unsafe {
-                    COPY_IN_PROGRESS = true;
-                }
-                // Still pass through the event to the system but don't output it to our
-                // listener
-                return Some(event);
-            }
-
             // Update pressed keys BEFORE checking if we should block
             // Normalize Unknown(179) to Function for detection purposes
             let normalized_key = if key_name == "Unknown(179)" {
@@ -165,54 +155,70 @@ fn callback(event: Event) -> Option<Event> {
                 key_name.clone()
             };
 
-            unsafe {
-                if !CURRENTLY_PRESSED.contains(&normalized_key) {
-                    CURRENTLY_PRESSED.push(normalized_key);
-                }
-            }
+            let (should_block_event, should_block_unknown_179, _needs_windows_poison) = {
+                let mut state = listener_state()
+                    .lock()
+                    .expect("Listener state mutex poisoned");
 
-            // Track modifier key states
-            if matches!(key, Key::MetaLeft | Key::MetaRight) {
-                unsafe {
-                    CMD_PRESSED = true;
+                if matches!(key, Key::KeyC) && (state.cmd_pressed || state.ctrl_pressed) {
+                    state.copy_in_progress = true;
+                    // Still pass through the event to the system but don't output it to our
+                    // listener.
+                    return Some(event);
                 }
-            }
-            if matches!(key, Key::ControlLeft | Key::ControlRight) {
-                unsafe {
-                    CTRL_PRESSED = true;
+
+                if !state.currently_pressed.contains(&normalized_key) {
+                    state.currently_pressed.push(normalized_key);
                 }
-            }
+
+                // Track modifier key states
+                if matches!(key, Key::MetaLeft | Key::MetaRight) {
+                    state.cmd_pressed = true;
+                }
+                if matches!(key, Key::ControlLeft | Key::ControlRight) {
+                    state.ctrl_pressed = true;
+                }
+
+                let should_block_event =
+                    should_block(&state.registered_hotkeys, &state.currently_pressed);
+
+                let should_block_unknown_179 = key_name == "Unknown(179)"
+                    && state
+                        .registered_hotkeys
+                        .iter()
+                        .any(|hotkey| hotkey.keys.iter().any(|k| k == "Function"));
+
+                #[cfg(target_os = "windows")]
+                let _needs_windows_poison = should_block_event
+                    && (state.cmd_pressed
+                        || state
+                            .currently_pressed
+                            .iter()
+                            .any(|k| k == "MetaLeft" || k == "MetaRight"));
+                #[cfg(not(target_os = "windows"))]
+                let _needs_windows_poison = false;
+
+                (should_block_event, should_block_unknown_179, _needs_windows_poison)
+            };
 
             output_event("keydown", &key);
 
             // Check if we should block based on exact hotkey match
             #[allow(clippy::if_same_then_else)]
-            if should_block() {
+            if should_block_event {
                 // Windows-specific: Prevent Start menu from opening when Windows key is used in
                 // hotkeys Windows shows the Start menu if it sees "Win down →
                 // Win up" with no other keys in between. By injecting a
                 // harmless key (VK 0xFF), we "poison" the sequence so Windows thinks
                 // it was a combo, not a standalone Windows key press
                 #[cfg(target_os = "windows")]
-                unsafe {
-                    if CMD_PRESSED
-                        || CURRENTLY_PRESSED
-                            .iter()
-                            .any(|k| k == "MetaLeft" || k == "MetaRight")
-                    {
-                        // VK 0xFF is documented as "no mapping" - a valid key code with no function
-                        let _ = simulate(&EventType::KeyPress(Key::Unknown(0xFF)));
-                        let _ = simulate(&EventType::KeyRelease(Key::Unknown(0xFF)));
-                    }
+                if _needs_windows_poison {
+                    // VK 0xFF is documented as "no mapping" - a valid key code with no function
+                    let _ = simulate(&EventType::KeyPress(Key::Unknown(0xFF)));
+                    let _ = simulate(&EventType::KeyRelease(Key::Unknown(0xFF)));
                 }
                 None // Block the event from reaching the OS
-            } else if key_name == "Unknown(179)"
-                && unsafe {
-                    REGISTERED_HOTKEYS
-                        .iter()
-                        .any(|hotkey| hotkey.keys.contains(&"Function".to_string()))
-                }
-            {
+            } else if should_block_unknown_179 {
                 None // Block Unknown(179) if any hotkey uses Function
             } else {
                 Some(event) // Let it through
@@ -228,31 +234,29 @@ fn callback(event: Event) -> Option<Event> {
                 key_name.clone()
             };
 
-            // Update pressed keys
-            unsafe {
-                CURRENTLY_PRESSED.retain(|k| k != &normalized_key);
-            }
-
-            // Check for C key release while copy is in progress or modifiers are still held
-            if matches!(key, Key::KeyC)
-                && unsafe { COPY_IN_PROGRESS || CMD_PRESSED || CTRL_PRESSED }
             {
-                unsafe {
-                    COPY_IN_PROGRESS = false;
-                }
-                // Don't output this C key release event
-                return Some(event);
-            }
+                let mut state = listener_state()
+                    .lock()
+                    .expect("Listener state mutex poisoned");
 
-            // Track modifier key states
-            if matches!(key, Key::MetaLeft | Key::MetaRight) {
-                unsafe {
-                    CMD_PRESSED = false;
+                // Update pressed keys
+                state.currently_pressed.retain(|k| k != &normalized_key);
+
+                // Check for C key release while copy is in progress or modifiers are still held
+                if matches!(key, Key::KeyC)
+                    && (state.copy_in_progress || state.cmd_pressed || state.ctrl_pressed)
+                {
+                    state.copy_in_progress = false;
+                    // Don't output this C key release event
+                    return Some(event);
                 }
-            }
-            if matches!(key, Key::ControlLeft | Key::ControlRight) {
-                unsafe {
-                    CTRL_PRESSED = false;
+
+                // Track modifier key states
+                if matches!(key, Key::MetaLeft | Key::MetaRight) {
+                    state.cmd_pressed = false;
+                }
+                if matches!(key, Key::ControlLeft | Key::ControlRight) {
+                    state.ctrl_pressed = false;
                 }
             }
 
@@ -277,5 +281,5 @@ fn output_event(event_type: &str, key: &Key) {
     });
 
     println!("{}", event_json);
-    io::stdout().flush().unwrap();
+    let _ = io::stdout().flush();
 }
