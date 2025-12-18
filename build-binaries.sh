@@ -26,6 +26,13 @@ print_error() {
 build_native_workspace() {
     print_status "Building native workspace..."
 
+    local project_root
+    project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Use an isolated Cargo home inside the repo so we can apply deterministic patches
+    # without touching the user's global ~/.cargo.
+    export CARGO_HOME="$project_root/native/.cargo-home"
+
     # Change into the native workspace directory
     cd "native"
 
@@ -39,8 +46,53 @@ build_native_workspace() {
     print_info "Installing dependencies for workspace..."
     cargo fetch
 
+    apply_rdev_macos_patch() {
+        local patch_file="$project_root/native/patches/rdev-macos-null-layout.patch"
+        local checkouts_dir="$CARGO_HOME/git/checkouts"
+
+        if [ ! -f "$patch_file" ]; then
+            print_error "Missing patch file: $patch_file"
+            exit 1
+        fi
+        if ! command -v patch &>/dev/null; then
+            print_error "'patch' command not found (required to apply rdev macOS fix)"
+            exit 1
+        fi
+        if [ ! -d "$checkouts_dir" ]; then
+            print_info "No Cargo git checkouts yet; skipping rdev patch."
+            return 0
+        fi
+
+        local did_patch=false
+        local found=false
+        shopt -s nullglob
+        for checkout in "$checkouts_dir"/rdev-*/*; do
+            if [ ! -f "$checkout/src/macos/keyboard.rs" ]; then
+                continue
+            fi
+            found=true
+            if grep -q "TISCopyCurrentKeyboardLayoutInputSource" "$checkout/src/macos/keyboard.rs"; then
+                continue
+            fi
+            print_info "Applying rdev macOS null-layout patch in: $checkout"
+            (cd "$checkout" && patch -p0 -N -f <"$patch_file")
+            did_patch=true
+        done
+        shopt -u nullglob
+
+        if [ "$found" = false ]; then
+            print_info "rdev checkout not found; it will be patched after it's fetched."
+        elif [ "$did_patch" = true ]; then
+            print_status "Applied rdev macOS patch."
+        else
+            print_info "rdev macOS patch already applied."
+        fi
+    }
+
     # --- macOS Build ---
     if [ "$BUILD_MAC" = true ]; then
+        apply_rdev_macos_patch
+
         # Determine target architecture (default to arm64)
         local mac_target="aarch64-apple-darwin"
         local arch_name="Apple Silicon (arm64)"
