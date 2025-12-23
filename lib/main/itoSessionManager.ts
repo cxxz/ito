@@ -18,6 +18,7 @@ export class ItoSessionManager {
     audioBuffer: Buffer
     sampleRate: number
   }> | null = null
+  private contextFetchPromise: Promise<void> | null = null
   private grammarRulesService = new GrammarRulesService('')
 
   public async startSession(mode: ItoMode) {
@@ -55,8 +56,8 @@ export class ItoSessionManager {
     recordingStateNotifier.notifyRecordingStarted(mode)
 
     // Fetch and send context in the background (non-blocking)
-    this.fetchAndSendContext().catch(error => {
-      log.error('[itoSessionManager] Failed to fetch/send context:', error)
+    this.contextFetchPromise = this.fetchAndSendContext().catch(error => {
+      console.error('[itoSessionManager] Failed to fetch/send context:', error)
     })
 
     // Start timing the interaction
@@ -77,14 +78,45 @@ export class ItoSessionManager {
     // Send the gathered context to the stream controller
     await itoStreamController.scheduleConfigUpdate(context)
 
-    // Fetch cursor context for grammar rules only if grammar service is enabled
-    const { grammarServiceEnabled } = getAdvancedSettings()
-    if (grammarServiceEnabled) {
-      const cursorContext = await timingCollector.timeAsync(
-        TimingEventName.GRAMMAR_SERVICE,
-        async () => await contextGrabber.getCursorContextForGrammar(),
+    this.fetchCursorContextForGrammar().catch(error => {
+      console.error(
+        '[itoSessionManager] Failed to fetch grammar context:',
+        error,
       )
-      this.grammarRulesService = new GrammarRulesService(cursorContext)
+    })
+  }
+
+  private async fetchCursorContextForGrammar() {
+    const { grammarServiceEnabled } = getAdvancedSettings()
+    if (!grammarServiceEnabled) {
+      return
+    }
+
+    const cursorContext = await timingCollector.timeAsync(
+      TimingEventName.GRAMMAR_SERVICE,
+      async () => await contextGrabber.getCursorContextForGrammar(),
+    )
+    this.grammarRulesService = new GrammarRulesService(cursorContext)
+  }
+
+  private async refreshVocabularyAtEnd() {
+    try {
+      const mode = itoStreamController.getCurrentMode()
+      const vocabularyWords = await contextGrabber.gatherVocabularyWords(mode)
+
+      if (vocabularyWords.length === 0) {
+        console.log(
+          '[itoSessionManager] No vocabulary update to send at recording end',
+        )
+        return
+      }
+
+      await itoStreamController.scheduleVocabularyUpdate(vocabularyWords)
+    } catch (error) {
+      console.error(
+        '[itoSessionManager] Failed to refresh vocabulary at recording end:',
+        error,
+      )
     }
   }
 
@@ -113,6 +145,8 @@ export class ItoSessionManager {
 
     // Update UI state
     recordingStateNotifier.notifyRecordingStopped()
+
+    this.contextFetchPromise = null
 
     // Wait for the stream promise to reject with cancellation error
     if (responsePromise) {
@@ -145,6 +179,7 @@ export class ItoSessionManager {
       )
       itoStreamController.cancelTranscription()
       recordingStateNotifier.notifyRecordingStopped()
+      this.contextFetchPromise = null
 
       // Wait for the stream promise to reject with cancellation error
       if (responsePromise) {
@@ -160,6 +195,13 @@ export class ItoSessionManager {
       }
       return
     }
+
+    if (this.contextFetchPromise) {
+      await this.contextFetchPromise
+      this.contextFetchPromise = null
+    }
+
+    await this.refreshVocabularyAtEnd()
 
     // End the interaction (this will complete the gRPC stream)
     itoStreamController.endInteraction()
@@ -198,6 +240,8 @@ export class ItoSessionManager {
       console.warn('[itoSessionManager] No stream response promise to wait for')
       recordingStateNotifier.notifyProcessingStopped()
     }
+
+    this.contextFetchPromise = null
   }
 
   private async handleTranscriptionResponse(result: {

@@ -39,6 +39,7 @@ const mockItoStreamController = {
   setMode: mock(),
   getCurrentMode: mock(() => ItoMode.TRANSCRIBE),
   scheduleConfigUpdate: mock(() => Promise.resolve()),
+  scheduleVocabularyUpdate: mock(() => Promise.resolve()),
   getAudioDurationMs: mock(() => 1000),
   endInteraction: mock(),
   cancelTranscription: mock(),
@@ -91,6 +92,7 @@ const mockContextGrabber = {
       },
     }),
   ),
+  gatherVocabularyWords: mock(() => Promise.resolve([])),
   getCursorContextForGrammar: mock(() => Promise.resolve('test context')),
 }
 mock.module('./context/ContextGrabber', () => ({
@@ -270,6 +272,25 @@ describe('itoSessionManager', () => {
     expect(mockVoiceInputService.stopAudioRecording).toHaveBeenCalled()
     expect(mockItoStreamController.endInteraction).toHaveBeenCalled()
     expect(mockRecordingStateNotifier.notifyRecordingStopped).toHaveBeenCalled()
+  })
+
+  test('should refresh vocabulary at recording end', async () => {
+    mockContextGrabber.gatherVocabularyWords.mockResolvedValueOnce([
+      'custom-term',
+    ])
+
+    const { ItoSessionManager } = await import('./itoSessionManager')
+    const session = new ItoSessionManager()
+
+    await session.startSession(ItoMode.TRANSCRIBE)
+    await session.completeSession()
+
+    expect(mockContextGrabber.gatherVocabularyWords).toHaveBeenCalledWith(
+      ItoMode.TRANSCRIBE,
+    )
+    expect(mockItoStreamController.scheduleVocabularyUpdate).toHaveBeenCalledWith(
+      ['custom-term'],
+    )
   })
 
   test('should cancel session when audio too short', async () => {

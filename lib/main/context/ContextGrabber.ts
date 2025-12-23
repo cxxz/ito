@@ -45,18 +45,7 @@ export class ContextGrabber {
     // Extract vocabulary words from selected text as temporary hints
     // Only do this in non-EDIT modes - in EDIT mode, selected text is used
     // only as context for the LLM step, not as vocabulary hints for ASR
-    const selectedTextVocabulary =
-      mode !== ItoMode.EDIT
-        ? this.extractVocabularyFromText(
-            await this.getSelectedTextForVocabulary(),
-          )
-        : []
-    if (selectedTextVocabulary.length > 0) {
-      console.log(
-        '[ContextGrabber] Extracted vocabulary from selected text:',
-        selectedTextVocabulary,
-      )
-    }
+    const selectedTextVocabulary = await this.getSelectedTextVocabulary(mode)
 
     // Combine dictionary vocabulary with selected text vocabulary
     const vocabularyWords = [...dictionaryVocabulary, ...selectedTextVocabulary]
@@ -73,6 +62,16 @@ export class ContextGrabber {
       contextText,
       advancedSettings,
     }
+  }
+
+  /**
+   * Gather vocabulary words only (dictionary + selected text).
+   * Useful for refreshing vocabulary at the end of a recording.
+   */
+  public async gatherVocabularyWords(mode: ItoMode): Promise<string[]> {
+    const dictionaryVocabulary = await this.getVocabulary()
+    const selectedTextVocabulary = await this.getSelectedTextVocabulary(mode)
+    return [...dictionaryVocabulary, ...selectedTextVocabulary]
   }
 
   private async getVocabulary(): Promise<string[]> {
@@ -103,6 +102,25 @@ export class ContextGrabber {
       .filter(w => /^[a-zA-Z0-9\-_.\s']+$/.test(w)) // Match server validation regex
 
     return [...new Set(words)] // Deduplicate
+  }
+
+  private async getSelectedTextVocabulary(mode: ItoMode): Promise<string[]> {
+    if (mode === ItoMode.EDIT) {
+      return []
+    }
+
+    const selectedTextVocabulary = this.extractVocabularyFromText(
+      await this.getSelectedTextForVocabulary(),
+    )
+
+    if (selectedTextVocabulary.length > 0) {
+      console.log(
+        '[ContextGrabber] Extracted vocabulary from selected text:',
+        selectedTextVocabulary,
+      )
+    }
+
+    return selectedTextVocabulary
   }
 
   /**

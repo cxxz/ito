@@ -113,6 +113,34 @@ export class ItoStreamController {
     this.configQueue.push(config)
   }
 
+  public scheduleVocabularyUpdate(vocabularyWords: string[]) {
+    if (!this.audioStreamManager.isCurrentlyStreaming()) {
+      console.warn(
+        '[ItoStreamController] Cannot send vocabulary update - no active stream',
+      )
+      return
+    }
+
+    if (vocabularyWords.length === 0) {
+      console.log(
+        '[ItoStreamController] Skipping vocabulary update (empty list)',
+      )
+      return
+    }
+
+    console.log('[ItoStreamController] Queueing vocabulary update')
+    const vocabularyUpdate = create(TranscribeStreamRequestSchema, {
+      payload: {
+        case: 'config',
+        value: create(StreamConfigSchema, {
+          vocabulary: vocabularyWords,
+        }),
+      },
+    })
+
+    this.configQueue.push(vocabularyUpdate)
+  }
+
   private sendModeUpdate(mode: ItoMode) {
     console.log(`[ItoStreamController] Sending mode update: ${mode}`)
 
