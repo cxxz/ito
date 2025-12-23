@@ -312,10 +312,10 @@ class GrpcClient {
     })
   }
 
-  async deleteInteraction(interaction: Interaction) {
+  async deleteInteraction(interactionId: string) {
     return this.withRetry(async () => {
       const request = create(DeleteInteractionRequestSchema, {
-        id: interaction.id,
+        id: interactionId,
       })
       return await this.client.deleteInteraction(request, {
         headers: this.getHeaders(),

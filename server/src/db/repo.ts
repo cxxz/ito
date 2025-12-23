@@ -161,7 +161,13 @@ export class InteractionsRepository {
   static async softDelete(id: string): Promise<boolean> {
     const res = await pool.query(
       `UPDATE interactions
-       SET deleted_at = current_timestamp
+       SET deleted_at = current_timestamp,
+           updated_at = current_timestamp,
+           title = NULL,
+           asr_output = NULL,
+           llm_output = NULL,
+           raw_audio = NULL,
+           raw_audio_id = NULL
        WHERE id = $1`,
       [id],
     )
@@ -171,7 +177,13 @@ export class InteractionsRepository {
   static async deleteAllUserData(userId: string): Promise<boolean> {
     const res = await pool.query(
       `UPDATE interactions
-       SET deleted_at = current_timestamp
+       SET deleted_at = current_timestamp,
+           updated_at = current_timestamp,
+           title = NULL,
+           asr_output = NULL,
+           llm_output = NULL,
+           raw_audio = NULL,
+           raw_audio_id = NULL
        WHERE user_id = $1`,
       [userId],
     )

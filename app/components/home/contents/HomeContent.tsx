@@ -7,6 +7,7 @@ import {
   Copy,
   Check,
   Download,
+  Trash,
 } from '@mynaui/icons-react'
 import { EXTERNAL_LINKS } from '@/lib/constants/external-links'
 import { useSettingsStore } from '../../../store/useSettingsStore'
@@ -70,6 +71,7 @@ export default function HomeContent() {
   >(new Map())
   const [copiedItems, setCopiedItems] = useState<Set<string>>(new Set())
   const [openTooltipKey, setOpenTooltipKey] = useState<string | null>(null)
+  const [isClearingAll, setIsClearingAll] = useState(false)
   const [stats, setStats] = useState<InteractionStats>({
     streakDays: 0,
     totalWords: 0,
@@ -324,6 +326,52 @@ export default function HomeContent() {
 
   const groupedInteractions = groupInteractionsByDate(interactions)
 
+  const updateInteractions = (nextInteractions: Interaction[]) => {
+    setInteractions(nextInteractions)
+    setStats(calculateAllStats(nextInteractions))
+  }
+
+  const cleanupAudioInstance = (interactionId: string) => {
+    const audio = audioInstances.get(interactionId)
+    if (audio) {
+      try {
+        audio.pause()
+        audio.currentTime = 0
+        if (audio.src?.startsWith('blob:')) {
+          URL.revokeObjectURL(audio.src)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setAudioInstances(prev => {
+      if (!prev.has(interactionId)) {
+        return prev
+      }
+      const next = new Map(prev)
+      next.delete(interactionId)
+      return next
+    })
+    setPlayingAudio(prev => (prev === interactionId ? null : prev))
+  }
+
+  const cleanupAllAudioInstances = () => {
+    audioInstances.forEach(audio => {
+      try {
+        audio.pause()
+        audio.currentTime = 0
+        if (audio.src?.startsWith('blob:')) {
+          URL.revokeObjectURL(audio.src)
+        }
+      } catch {
+        /* ignore */
+      }
+    })
+    setAudioInstances(new Map())
+    setPlayingAudio(null)
+  }
+
   const copyToClipboard = async (text: string, interactionId: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -344,6 +392,70 @@ export default function HomeContent() {
       }, 2000)
     } catch (error) {
       console.error('Failed to copy text:', error)
+    }
+  }
+
+  const handleDeleteInteraction = async (interaction: Interaction) => {
+    cleanupAudioInstance(interaction.id)
+    setOpenTooltipKey(prev =>
+      prev?.endsWith(`:${interaction.id}`) ? null : prev,
+    )
+
+    try {
+      await window.api.interactions.delete(interaction.id)
+      setCopiedItems(prev => {
+        if (!prev.has(interaction.id)) {
+          return prev
+        }
+        const next = new Set(prev)
+        next.delete(interaction.id)
+        return next
+      })
+      setInteractions(prev => {
+        const next = prev.filter(item => item.id !== interaction.id)
+        setStats(calculateAllStats(next))
+        return next
+      })
+    } catch (error) {
+      console.error('Failed to delete interaction:', error)
+    }
+  }
+
+  const handleClearAll = async () => {
+    if (interactions.length === 0 || loading || isClearingAll) {
+      return
+    }
+
+    const confirmed = confirm(
+      'Clear all activity? This will permanently delete transcripts and audio from the server.',
+    )
+    if (!confirmed) {
+      return
+    }
+
+    setIsClearingAll(true)
+    setOpenTooltipKey(null)
+    setCopiedItems(new Set())
+    cleanupAllAudioInstances()
+
+    try {
+      const results = await Promise.allSettled(
+        interactions.map(interaction =>
+          window.api.interactions.delete(interaction.id),
+        ),
+      )
+      const failed = results.filter(result => result.status === 'rejected')
+      if (failed.length > 0) {
+        console.error('Failed to clear some interactions:', failed)
+        await loadInteractions()
+        return
+      }
+      updateInteractions([])
+    } catch (error) {
+      console.error('Failed to clear interactions:', error)
+      await loadInteractions()
+    } finally {
+      setIsClearingAll(false)
     }
   }
 
@@ -479,8 +591,16 @@ export default function HomeContent() {
         </div>
 
         {/* Recent Activity Header */}
-        <div className="text-sm text-muted-foreground mb-6">
-          Recent activity
+        <div className="flex items-center justify-between text-sm text-muted-foreground mb-6">
+          <span>Recent activity</span>
+          <button
+            type="button"
+            className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-50 disabled:hover:text-gray-500"
+            onClick={handleClearAll}
+            disabled={loading || interactions.length === 0 || isClearingAll}
+          >
+            {isClearingAll ? 'Clearing...' : 'Clear all'}
+          </button>
         </div>
       </div>
 
@@ -647,6 +767,30 @@ export default function HomeContent() {
                                 : playingAudio === interaction.id
                                   ? 'Stop'
                                   : 'Play'}
+                            </TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip
+                            open={openTooltipKey === `delete:${interaction.id}`}
+                            onOpenChange={open => {
+                              setOpenTooltipKey(
+                                open ? `delete:${interaction.id}` : null,
+                              )
+                            }}
+                          >
+                            <TooltipTrigger asChild>
+                              <button
+                                className="p-1.5 hover:bg-red-50 rounded transition-colors cursor-pointer text-gray-600 hover:text-red-600"
+                                onClick={() =>
+                                  handleDeleteInteraction(interaction)
+                                }
+                                disabled={isClearingAll}
+                              >
+                                <Trash className="w-4 h-4" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={5}>
+                              Delete
                             </TooltipContent>
                           </Tooltip>
                         </div>

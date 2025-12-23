@@ -1,5 +1,6 @@
 out/*
 release/*
+logs
 node_modules
 scratchpad
 package-lock.json

@@ -338,9 +338,14 @@ export function registerIPC() {
     InteractionsTable.findById(id),
   )
 
-  handleIPC('interactions:delete', async (_e, id) =>
-    InteractionsTable.softDelete(id),
-  )
+  handleIPC('interactions:delete', async (_e, id) => {
+    const userId = getCurrentUserId()
+    if (userId && userId !== 'self-hosted') {
+      const { grpcClient } = await import('../clients/grpcClient')
+      await grpcClient.deleteInteraction(id)
+    }
+    await InteractionsTable.softDelete(id)
+  })
 
   // User Data Deletion
   handleIPC('delete-user-data', async _e => {
