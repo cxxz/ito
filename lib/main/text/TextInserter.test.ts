@@ -1,4 +1,12 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { createMockTimingCollector } from '../../__tests__/setup'
+
+// Mock the TimingCollector module
+const mockTimingCollector = createMockTimingCollector()
+mock.module('../timing/TimingCollector', () => ({
+  timingCollector: mockTimingCollector,
+  TimingEventName: { TEXT_WRITER: 'text_writer' },
+}))
 
 // Mock the text-writer module
 const mockSetFocusedText = mock(() => Promise.resolve(true))

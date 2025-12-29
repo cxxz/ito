@@ -287,19 +287,20 @@ describe('GroqClient', () => {
       })
     })
 
-    it('should return user prompt on LLM error', async () => {
+    it('should throw ClientApiError on LLM error', async () => {
       const mockError = new Error('LLM API error')
       mockGroqClient.chat.completions.create.mockRejectedValue(mockError)
 
       const originalTranscript = 'Original transcript'
-      const result = await groqClient.adjustTranscript(originalTranscript, {
-        temperature: 0.1,
-        model: 'llama-3.3-70b-versatile',
-        prompt:
-          'You are a dictation assistant named Ito. Your job is to fulfill the intent of the transcript without asking follow up questions.',
-      })
 
-      expect(result).toBe(originalTranscript)
+      await expect(
+        groqClient.adjustTranscript(originalTranscript, {
+          temperature: 0.1,
+          model: 'llama-3.3-70b-versatile',
+          prompt:
+            'You are a dictation assistant named Ito. Your job is to fulfill the intent of the transcript without asking follow up questions.',
+        }),
+      ).rejects.toThrow('LLM API error')
     })
 
     it('should handle empty LLM response', async () => {

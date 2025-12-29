@@ -1,7 +1,6 @@
 import {
   ItoService,
   TimingService,
-  AudioChunk,
   Note as NotePb,
   Interaction as InteractionPb,
   DictionaryItem as DictionaryItemPb,
@@ -23,7 +22,6 @@ import {
   GetAdvancedSettingsRequestSchema,
   UpdateAdvancedSettingsRequestSchema,
   SubmitTimingReportsRequestSchema,
-  ItoMode,
   TranscribeStreamRequest,
   TranscribeStreamResponse,
   TranscribePhase,
@@ -33,14 +31,7 @@ import { createConnectTransport } from '@connectrpc/connect-node'
 import { BrowserWindow } from 'electron'
 import { create } from '@bufbuild/protobuf'
 import { Note, Interaction, DictionaryItem } from '../main/sqlite/models'
-import { DictionaryTable } from '../main/sqlite/repo'
-import {
-  AdvancedSettings,
-  getAdvancedSettings,
-  getCurrentUserId,
-} from '../main/store'
-import { getSelectedTextString } from '../media/selected-text-reader'
-import { getActiveWindow } from '../media/active-application'
+import { AdvancedSettings } from '../main/store'
 
 class GrpcClient {
   private client: ReturnType<typeof createClient<typeof ItoService>>
@@ -90,119 +81,9 @@ class GrpcClient {
     return new Headers()
   }
 
-  private async getHeadersWithMetadata(mode: ItoMode) {
-    const headers = this.getHeaders()
-
-    try {
-      // Fetch vocabulary from local database
-      const user_id = getCurrentUserId()
-      const dictionaryItems = await DictionaryTable.findAll(user_id)
-
-      // Convert to vocabulary format for transcription
-      const vocabularyWords = dictionaryItems
-        .filter(item => item.deleted_at === null)
-        .map(item => item.word)
-
-      // Add vocabulary to headers if available
-      if (vocabularyWords.length > 0) {
-        headers.set('vocabulary', vocabularyWords.join(','))
-      }
-
-      // Fetch window context
-      const windowContext = await getActiveWindow()
-      if (windowContext) {
-        headers.set('window-title', windowContext.title)
-        headers.set('app-name', windowContext.appName)
-      }
-
-      function flattenHeaderValue(value: string) {
-        const flattened = value
-          .replace(/[\r\n]+/g, ' ')
-          .replace(/\s{2,}/g, ' ')
-          .trim()
-
-        // Check if the string contains non-ASCII characters
-        // eslint-disable-next-line no-control-regex
-        const hasUnicode = /[^\x00-\x7F]/.test(flattened)
-
-        if (hasUnicode) {
-          // Base64 encode to safely transmit Unicode characters via gRPC headers
-          return `base64:${Buffer.from(flattened, 'utf8').toString('base64')}`
-        }
-
-        return flattened
-      }
-
-      // Add ASR model from advanced settings
-      const advancedSettings = getAdvancedSettings()
-      headers.set('asr-model', advancedSettings.llm.asrModel ?? '')
-      headers.set('asr-provider', advancedSettings.llm.asrProvider ?? '')
-      headers.set(
-        'asr-prompt',
-        flattenHeaderValue(advancedSettings.llm.asrPrompt ?? ''),
-      )
-      headers.set('llm-provider', advancedSettings.llm.llmProvider ?? '')
-      headers.set('llm-model', advancedSettings.llm.llmModel ?? '')
-      headers.set(
-        'llm-temperature',
-        advancedSettings.llm.llmTemperature?.toString() ?? '',
-      )
-      headers.set(
-        'transcription-prompt',
-        flattenHeaderValue(advancedSettings.llm.transcriptionPrompt ?? ''),
-      )
-      // Note: Editing prompt is currently disabled until a better versioning solution is implemented
-      // https://github.com/heyito/ito/issues/174
-      // headers.set(
-      //   'editing-prompt',
-      //   flattenHeaderValue(advancedSettings.llm.editingPrompt),
-      // )
-      headers.set(
-        'no-speech-threshold',
-        advancedSettings.llm.noSpeechThreshold?.toString() ?? '',
-      )
-
-      headers.set('mode', mode.toString())
-
-      try {
-        // We currently only support context gathering on mac
-        if (mode === ItoMode.EDIT) {
-          const contextText = await getSelectedTextString(10000)
-          if (contextText && contextText.trim().length > 0) {
-            headers.set('context-text', flattenHeaderValue(contextText))
-            console.log(
-              '[gRPC Client] Adding context text to headers:',
-              contextText.length,
-              'characters',
-              contextText,
-            )
-          }
-        }
-      } catch (error) {
-        console.error('[gRPC Client] Error getting context text:', error)
-      }
-    } catch (error) {
-      console.error(
-        'Failed to fetch vocabulary/settings for transcription:',
-        error,
-      )
-    }
-
-    return headers
-  }
-
   private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
     // Self-hosted mode: no token refresh needed, just execute the operation
     return await operation()
-  }
-
-  async transcribeStream(stream: AsyncIterable<AudioChunk>, mode: ItoMode) {
-    return this.withRetry(async () => {
-      const response = await this.client.transcribeStream(stream, {
-        headers: await this.getHeadersWithMetadata(mode),
-      })
-      return response
-    })
   }
 
   async transcribeStreamV2(

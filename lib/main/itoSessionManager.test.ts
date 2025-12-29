@@ -22,6 +22,10 @@ const mockRecordingStateNotifier = {
   notifyRecordingStopped: mock(),
   notifyProcessingStarted: mock(),
   notifyProcessingStopped: mock(),
+  notifyPolishingStarted: mock(),
+  notifyPolishingStopped: mock(),
+  notifyEditingStarted: mock(),
+  notifyEditingStopped: mock(),
 }
 mock.module('./recordingStateNotifier', () => ({
   recordingStateNotifier: mockRecordingStateNotifier,

@@ -31,6 +31,10 @@ const mockChildProcess = {
 mock.module('child_process', () => ({
   spawn: mockSpawn,
 }))
+// Bun may resolve to node:child_process; mock that as well
+mock.module('node:child_process', () => ({
+  spawn: mockSpawn,
+}))
 
 mock.module('path', () => ({
   join: mock((...paths: string[]) => paths.join('/')),
