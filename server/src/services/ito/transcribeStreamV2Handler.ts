@@ -34,6 +34,17 @@ import { kUser } from '../../auth/userContext.js'
 import { createInteractionWithAudio } from './interactionHelpers.js'
 import { v4 as uuidv4 } from 'uuid'
 
+interface PolishError {
+  message: string
+  provider: string
+  model: string
+}
+
+interface AdjustResult {
+  transcript: string
+  polishError?: PolishError
+}
+
 export class TranscribeStreamV2Handler {
   private readonly MODE_CHANGE_GRACE_PERIOD_MS = 100
 
@@ -142,12 +153,14 @@ export class TranscribeStreamV2Handler {
       }
 
       // Time transcript adjustment (only happens in EDIT mode or TRANSCRIBE with polish)
-      transcript = await this.adjustTranscriptForMode(
+      const adjustResult = await this.adjustTranscriptForMode(
         transcript,
         mode,
         windowContext,
         advancedSettings,
       )
+      transcript = adjustResult.transcript
+      const polishError = adjustResult.polishError
 
       const duration = Date.now() - startTime
 
@@ -176,7 +189,9 @@ export class TranscribeStreamV2Handler {
             durationMs: duration,
           })
 
-          // Create LLM output object (only if transcript was adjusted in EDIT mode)
+          // Create LLM output object
+          // - For EDIT mode: store adjusted transcript if changed
+          // - For TRANSCRIBE with polish error: store the error details
           const llmOutput =
             mode === ItoMode.EDIT && transcript !== originalTranscript
               ? JSON.stringify({
@@ -184,7 +199,16 @@ export class TranscribeStreamV2Handler {
                   mode: 'EDIT',
                   timestamp: new Date().toISOString(),
                 })
-              : null
+              : polishError
+                ? JSON.stringify({
+                    error: polishError.message,
+                    errorCode: 'POLISH_LLM_FAILED',
+                    provider: polishError.provider,
+                    model: polishError.model,
+                    mode: 'TRANSCRIBE_POLISH',
+                    timestamp: new Date().toISOString(),
+                  })
+                : null
 
           // Use shared helper to create interaction
           await createInteractionWithAudio({
@@ -484,7 +508,7 @@ export class TranscribeStreamV2Handler {
     mode: ItoMode,
     windowContext: ItoContext,
     advancedSettings: ReturnType<typeof this.prepareAdvancedSettings>,
-  ): Promise<string> {
+  ): Promise<AdjustResult> {
     console.log(
       `[${new Date().toISOString()}] Detected mode: ${mode}, adjusting transcript`,
     )
@@ -510,13 +534,13 @@ export class TranscribeStreamV2Handler {
           `📝 [${new Date().toISOString()}] Adjusted transcript (EDIT): "${adjustedTranscript}"`,
         )
 
-        return adjustedTranscript
+        return { transcript: adjustedTranscript }
       } catch (error) {
         console.error(
           `⚠️ [${new Date().toISOString()}] LLM adjustment failed, using raw transcript:`,
           error,
         )
-        return transcript
+        return { transcript }
       }
     }
 
@@ -548,18 +572,25 @@ export class TranscribeStreamV2Handler {
           `📝 [${new Date().toISOString()}] Polished transcript: "${polishedTranscript}"`,
         )
 
-        return polishedTranscript
+        return { transcript: polishedTranscript }
       } catch (error) {
         console.error(
           `⚠️ [${new Date().toISOString()}] Polish failed, using raw transcript:`,
           error,
         )
-        return transcript
+        return {
+          transcript,
+          polishError: {
+            message: error instanceof Error ? error.message : String(error),
+            provider: advancedSettings.polishLlmProvider,
+            model: advancedSettings.polishLlmModel,
+          },
+        }
       }
     }
 
     // Default: return raw transcript (TRANSCRIBE mode without polish)
-    return transcript
+    return { transcript }
   }
 
   private mergeStreamConfigs(

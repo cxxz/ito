@@ -44,7 +44,8 @@
       "Bash(cargo build:*)",
       "Bash(bun proto:gen:server:*)",
       "Bash(bun proto:gen:client:*)",
-      "Bash(bun runServerTests:*)"
+      "Bash(bun runServerTests:*)",
+      "Bash(bun runAllTests:*)"
     ],
     "defaultMode": "bypassPermissions"
   }

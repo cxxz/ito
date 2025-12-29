@@ -8,6 +8,7 @@ import {
   Check,
   Download,
   Trash,
+  DangerTriangle,
 } from '@mynaui/icons-react'
 import { EXTERNAL_LINKS } from '@/lib/constants/external-links'
 import { useSettingsStore } from '../../../store/useSettingsStore'
@@ -236,6 +237,19 @@ export default function HomeContent() {
       isError: false,
       tooltip: null,
     }
+  }
+
+  const getPolishError = (
+    interaction: Interaction,
+  ): { message: string; provider: string; model: string } | null => {
+    if (interaction.llm_output?.errorCode === 'POLISH_LLM_FAILED') {
+      return {
+        message: interaction.llm_output.error || 'Polish failed',
+        provider: interaction.llm_output.provider || 'unknown',
+        model: interaction.llm_output.model || 'unknown',
+      }
+    }
+    return null
   }
 
   const handleAudioPlayStop = async (interaction: Interaction) => {
@@ -647,6 +661,16 @@ export default function HomeContent() {
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   {displayInfo.tooltip}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            {getPolishError(interaction) && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <DangerTriangle className="w-4 h-4 text-amber-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Polish failed: {getPolishError(interaction)?.message}
                                 </TooltipContent>
                               </Tooltip>
                             )}
