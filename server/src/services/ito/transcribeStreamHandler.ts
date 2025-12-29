@@ -45,7 +45,7 @@ interface AdjustResult {
   polishError?: PolishError
 }
 
-export class TranscribeStreamV2Handler {
+export class TranscribeStreamHandler {
   private readonly MODE_CHANGE_GRACE_PERIOD_MS = 100
 
   async *process(
@@ -54,7 +54,7 @@ export class TranscribeStreamV2Handler {
   ): AsyncIterable<TranscribeStreamResponse> {
     const startTime = Date.now()
 
-    console.log(`📩 [${new Date().toISOString()}] Starting TranscribeStreamV2`)
+    console.log(`📩 [${new Date().toISOString()}] Starting TranscribeStream`)
 
     // Collect stream data
     const {
@@ -233,7 +233,7 @@ export class TranscribeStreamV2Handler {
       serverTimingCollector.finalizeInteraction(interactionId)
 
       console.log(
-        `✅ [${new Date().toISOString()}] TranscribeStreamV2 completed in ${duration}ms`,
+        `✅ [${new Date().toISOString()}] TranscribeStream completed in ${duration}ms`,
       )
 
       yield create(TranscribeStreamResponseSchema, {
@@ -250,7 +250,7 @@ export class TranscribeStreamV2Handler {
         throw error
       }
 
-      console.error('Failed to process TranscribeStreamV2:', error)
+      console.error('Failed to process TranscribeStream:', error)
 
       yield create(TranscribeStreamResponseSchema, {
         phase: TranscribePhase.PHASE_COMPLETE,
@@ -632,4 +632,4 @@ export class TranscribeStreamV2Handler {
   }
 }
 
-export const transcribeStreamV2Handler = new TranscribeStreamV2Handler()
+export const transcribeStreamHandler = new TranscribeStreamHandler()

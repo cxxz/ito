@@ -13,7 +13,7 @@ const createMockResponse = (transcript: string) =>
   })
 
 const mockGrpcClient = {
-  transcribeStreamV2: mock(() =>
+  transcribeStream: mock(() =>
     Promise.resolve(createMockResponse('default')),
   ),
 }
@@ -107,8 +107,8 @@ describe('ItoStreamController', () => {
     Object.values(mockAudioStreamManager).forEach(mockFn => mockFn.mockClear())
     Object.values(mockContextGrabber).forEach(mockFn => mockFn.mockClear())
 
-    mockGrpcClient.transcribeStreamV2.mockClear()
-    mockGrpcClient.transcribeStreamV2.mockResolvedValue(
+    mockGrpcClient.transcribeStream.mockClear()
+    mockGrpcClient.transcribeStream.mockResolvedValue(
       createMockResponse('default'),
     )
 
@@ -147,13 +147,13 @@ describe('ItoStreamController', () => {
     const controller = new ItoStreamController()
 
     const mockResponse = createMockResponse('Hello world')
-    mockGrpcClient.transcribeStreamV2.mockResolvedValueOnce(mockResponse)
+    mockGrpcClient.transcribeStream.mockResolvedValueOnce(mockResponse)
 
     await controller.initialize(ItoMode.TRANSCRIBE)
 
     const result = await controller.startGrpcStream()
 
-    expect(mockGrpcClient.transcribeStreamV2).toHaveBeenCalled()
+    expect(mockGrpcClient.transcribeStream).toHaveBeenCalled()
     expect(result).toEqual({
       response: mockResponse,
       audioBuffer: Buffer.from('audio-data'),

@@ -13,7 +13,7 @@ export interface CreateInteractionParams {
 /**
  * Creates an interaction in the database.
  * This helper is shared between the gRPC createInteraction endpoint and
- * the transcribeStreamV2Handler.
+ * the transcribeStreamHandler.
  */
 export async function createInteractionWithAudio(
   params: CreateInteractionParams,

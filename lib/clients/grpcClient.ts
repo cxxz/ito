@@ -41,7 +41,7 @@ class GrpcClient {
   constructor() {
     const transport = createConnectTransport({
       baseUrl: import.meta.env.VITE_GRPC_BASE_URL,
-      // Use HTTP/2 for bidirectional streaming support (required for TranscribeStreamV2 phase updates)
+      // Use HTTP/2 for bidirectional streaming support (required for TranscribeStream phase updates)
       httpVersion: '2',
     })
     console.log(
@@ -86,13 +86,13 @@ class GrpcClient {
     return await operation()
   }
 
-  async transcribeStreamV2(
+  async transcribeStream(
     stream: AsyncIterable<TranscribeStreamRequest>,
     signal?: AbortSignal,
     onPhaseUpdate?: (phase: TranscribePhase) => void,
   ): Promise<TranscribeStreamResponse> {
     return this.withRetry(async () => {
-      const responseStream = this.client.transcribeStreamV2(stream, {
+      const responseStream = this.client.transcribeStream(stream, {
         headers: this.getHeaders(),
         signal,
       })

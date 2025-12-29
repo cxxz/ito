@@ -5,15 +5,11 @@ package ito;
 import "buf/validate/validate.proto";
 
 service ItoService {
-  // Streams audio chunks from the client and gets a single response.
-  // This is the ideal method for dictation to reduce latency and memory usage.
-  rpc TranscribeStream(stream AudioChunk) returns (TranscriptionResponse);
-
-  // Enhanced streaming transcription that accepts configuration data in-stream.
+  // Streaming transcription that accepts configuration data in-stream.
   // Config can be sent before, during, or omitted entirely. Multiple config messages
   // are merged by the server. This allows immediate streaming without waiting for context.
   // Returns a stream of status updates followed by the final transcript.
-  rpc TranscribeStreamV2(stream TranscribeStreamRequest) returns (stream TranscribeStreamResponse);
+  rpc TranscribeStream(stream TranscribeStreamRequest) returns (stream TranscribeStreamResponse);
 
   // Note Service
   rpc CreateNote(CreateNoteRequest) returns (Note);
@@ -100,7 +96,7 @@ message ContextInfo {
   optional ItoMode mode = 4;
 }
 
-// Configuration that can be sent in-stream for TranscribeStreamV2.
+// Configuration that can be sent in-stream for TranscribeStream.
 // All fields are optional and will be merged by the server.
 // Multiple config messages received during the stream are progressively merged.
 message StreamConfig {
@@ -110,7 +106,7 @@ message StreamConfig {
   optional string interaction_id = 4;
 }
 
-// Request message for TranscribeStreamV2.
+// Request message for TranscribeStream.
 // Can contain either configuration or audio data.
 message TranscribeStreamRequest {
   oneof payload {
@@ -134,7 +130,7 @@ enum TranscribePhase {
   PHASE_EDITING = 4;       // Edit LLM in progress (EDIT mode)
 }
 
-// Streaming response message for TranscribeStreamV2.
+// Streaming response message for TranscribeStream.
 // Yields status updates during processing, followed by the final transcript.
 message TranscribeStreamResponse {
   TranscribePhase phase = 1;

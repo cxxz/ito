@@ -45,7 +45,8 @@
       "Bash(bun proto:gen:server:*)",
       "Bash(bun proto:gen:client:*)",
       "Bash(bun runServerTests:*)",
-      "Bash(bun runAllTests:*)"
+      "Bash(bun runAllTests:*)",
+      "Bash(bun run proto:gen:*)"
     ],
     "defaultMode": "bypassPermissions"
   }

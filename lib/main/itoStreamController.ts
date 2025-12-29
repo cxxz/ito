@@ -17,7 +17,7 @@ import { timingCollector, TimingEventName } from './timing/TimingCollector'
 import { interactionManager } from './interactions/InteractionManager'
 
 /**
- * ItoStreamController manages the lifecycle of a transcription stream using TranscribeStreamV2.
+ * ItoStreamController manages the lifecycle of a transcription stream using TranscribeStream.
  * It allows sending metadata/config, streaming audio, and updating settings during the stream.
  */
 export class ItoStreamController {
@@ -76,7 +76,7 @@ export class ItoStreamController {
     const response = await timingCollector.timeAsync(
       timingEventName,
       async () =>
-        await grpcClient.transcribeStreamV2(
+        await grpcClient.transcribeStream(
           this.createStreamGenerator(),
           abortSignal,
           onPhaseUpdate,

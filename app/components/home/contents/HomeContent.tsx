@@ -670,7 +670,8 @@ export default function HomeContent() {
                                   <DangerTriangle className="w-4 h-4 text-amber-500" />
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  Polish failed: {getPolishError(interaction)?.message}
+                                  Polish failed:{' '}
+                                  {getPolishError(interaction)?.message}
                                 </TooltipContent>
                               </Tooltip>
                             )}

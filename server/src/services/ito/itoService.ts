@@ -29,7 +29,7 @@ import {
 } from '../../db/models.js'
 import { ConnectError, Code } from '@connectrpc/connect'
 import { kUser } from '../../auth/userContext.js'
-import { transcribeStreamV2Handler } from './transcribeStreamV2Handler.js'
+import { transcribeStreamHandler } from './transcribeStreamHandler.js'
 import {
   getDefaultAdvancedSettingsStruct,
   getProviderDefaultLlmModels,
@@ -144,11 +144,11 @@ function dbToAdvancedSettingsPb(
 // Export the service implementation as a function that takes a ConnectRouter
 export default (router: ConnectRouter) => {
   router.service(ItoServiceDesc, {
-    async *transcribeStreamV2(
+    async *transcribeStream(
       requests: AsyncIterable<TranscribeStreamRequest>,
       context: HandlerContext,
     ) {
-      yield* transcribeStreamV2Handler.process(requests, context)
+      yield* transcribeStreamHandler.process(requests, context)
     },
     async createNote(request, context: HandlerContext) {
       const user = context.values.get(kUser)

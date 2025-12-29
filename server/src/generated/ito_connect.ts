@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { AdvancedSettings, AudioChunk, CreateDictionaryItemRequest, CreateInteractionRequest, CreateNoteRequest, DeleteDictionaryItemRequest, DeleteInteractionRequest, DeleteNoteRequest, DeleteUserDataRequest, DictionaryItem, Empty, GetAdvancedSettingsRequest, GetInteractionRequest, GetNoteRequest, Interaction, ListDictionaryItemsRequest, ListDictionaryItemsResponse, ListInteractionsRequest, ListInteractionsResponse, ListNotesRequest, ListNotesResponse, Note, SubmitTimingReportsRequest, SubmitTimingReportsResponse, TranscribeStreamRequest, TranscribeStreamResponse, TranscriptionResponse, UpdateAdvancedSettingsRequest, UpdateDictionaryItemRequest, UpdateInteractionRequest, UpdateNoteRequest } from "./ito_pb.js";
+import { AdvancedSettings, CreateDictionaryItemRequest, CreateInteractionRequest, CreateNoteRequest, DeleteDictionaryItemRequest, DeleteInteractionRequest, DeleteNoteRequest, DeleteUserDataRequest, DictionaryItem, Empty, GetAdvancedSettingsRequest, GetInteractionRequest, GetNoteRequest, Interaction, ListDictionaryItemsRequest, ListDictionaryItemsResponse, ListInteractionsRequest, ListInteractionsResponse, ListNotesRequest, ListNotesResponse, Note, SubmitTimingReportsRequest, SubmitTimingReportsResponse, TranscribeStreamRequest, TranscribeStreamResponse, UpdateAdvancedSettingsRequest, UpdateDictionaryItemRequest, UpdateInteractionRequest, UpdateNoteRequest } from "./ito_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -13,27 +13,15 @@ export const ItoService = {
   typeName: "ito.ItoService",
   methods: {
     /**
-     * Streams audio chunks from the client and gets a single response.
-     * This is the ideal method for dictation to reduce latency and memory usage.
+     * Streaming transcription that accepts configuration data in-stream.
+     * Config can be sent before, during, or omitted entirely. Multiple config messages
+     * are merged by the server. This allows immediate streaming without waiting for context.
+     * Returns a stream of status updates followed by the final transcript.
      *
      * @generated from rpc ito.ItoService.TranscribeStream
      */
     transcribeStream: {
       name: "TranscribeStream",
-      I: AudioChunk,
-      O: TranscriptionResponse,
-      kind: MethodKind.ClientStreaming,
-    },
-    /**
-     * Enhanced streaming transcription that accepts configuration data in-stream.
-     * Config can be sent before, during, or omitted entirely. Multiple config messages
-     * are merged by the server. This allows immediate streaming without waiting for context.
-     * Returns a stream of status updates followed by the final transcript.
-     *
-     * @generated from rpc ito.ItoService.TranscribeStreamV2
-     */
-    transcribeStreamV2: {
-      name: "TranscribeStreamV2",
       I: TranscribeStreamRequest,
       O: TranscribeStreamResponse,
       kind: MethodKind.BiDiStreaming,
