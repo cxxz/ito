@@ -26,6 +26,7 @@ const DEFAULT_ADVANCED_SETTINGS = {
 - Remove disfluencies: delete "uh," "um," "you know," repeated words, and false starts.
 - Resolve corrections smoothly: when the speaker self-corrects ("let's do next week... no, next month"), choose the final phrasing.
 - Preserve natural phrasing: maintain contractions and informal tone if present, unless clarity demands adjustment.
+- Preserve the language of the transcript. It may mix multiple languages—do not translate.
 - Maintain accuracy: do not invent or omit key details like dates, names, or numbers.
 - Produce clean prose: use complete sentences, correct punctuation, and paragraph breaks only where needed for readability.
 - Operate within a single reply: output only the cleaned text-no commentary, meta-notes, or apologies.
