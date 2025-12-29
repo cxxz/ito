@@ -13,6 +13,10 @@ const settings = {
   transcriptionPrompt: 'transcriptionPrompt',
   editingPrompt: 'editingPrompt',
   noSpeechThreshold: 0.7,
+  polishEnabled: false,
+  polishLlmProvider: 'polishLlmProvider',
+  polishLlmModel: 'polishLlmModel',
+  polishLlmTemperature: 1.0,
 }
 
 const defaults = {
@@ -26,6 +30,10 @@ const defaults = {
   transcriptionPrompt: 'defaultTranscriptionPrompt',
   editingPrompt: 'defaultEditingPrompt',
   noSpeechThreshold: 0.9,
+  polishEnabled: true,
+  polishLlmProvider: 'defaultPolishLlmProvider',
+  polishLlmModel: 'defaultPolishLlmModel',
+  polishLlmTemperature: 1.2,
 }
 
 describe('resolve default keys', () => {

@@ -12,6 +12,11 @@ export interface LlmSettings {
   transcriptionPrompt: string | null
   editingPrompt: string | null
   noSpeechThreshold: number | null
+  // Polish mode settings for TRANSCRIBE
+  polishEnabled: boolean | null
+  polishLlmProvider: string | null
+  polishLlmModel: string | null
+  polishLlmTemperature: number | null
 }
 
 interface AdvancedSettingsState {

@@ -350,13 +350,19 @@ export class SyncService {
               remoteSettings.llm?.transcriptionPrompt ?? null,
             editingPrompt: remoteSettings.llm?.editingPrompt ?? null,
             noSpeechThreshold: remoteSettings.llm?.noSpeechThreshold ?? null,
+            polishEnabled: remoteSettings.llm?.polishEnabled ?? null,
+            polishLlmProvider: remoteSettings.llm?.polishLlmProvider ?? null,
+            polishLlmModel: remoteSettings.llm?.polishLlmModel ?? null,
+            polishLlmTemperature:
+              remoteSettings.llm?.polishLlmTemperature ?? null,
           },
           // Preserve local-only settings that aren't synced to the server
           grammarServiceEnabled:
             currentLocalSettings?.grammarServiceEnabled ?? false,
           // Preserve defaults that were set earlier in this function
           defaults: currentLocalSettings?.defaults,
-          llmProviderDefaultModels: currentLocalSettings?.llmProviderDefaultModels,
+          llmProviderDefaultModels:
+            currentLocalSettings?.llmProviderDefaultModels,
           macosAccessibilityContextEnabled:
             currentLocalSettings.macosAccessibilityContextEnabled ?? false,
         }

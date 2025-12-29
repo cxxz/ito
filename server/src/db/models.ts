@@ -42,6 +42,11 @@ interface LlmSettingsBase {
   editing_prompt: string | null
   no_speech_threshold: number | null
   low_quality_threshold: number | null
+  // Polish mode settings for TRANSCRIBE
+  polish_enabled: boolean | null
+  polish_llm_provider: string | null
+  polish_llm_model: string | null
+  polish_llm_temperature: number | null
 }
 
 export interface LlmSettings extends LlmSettingsBase {

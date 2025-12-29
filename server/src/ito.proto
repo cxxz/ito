@@ -12,7 +12,8 @@ service ItoService {
   // Enhanced streaming transcription that accepts configuration data in-stream.
   // Config can be sent before, during, or omitted entirely. Multiple config messages
   // are merged by the server. This allows immediate streaming without waiting for context.
-  rpc TranscribeStreamV2(stream TranscribeStreamRequest) returns (TranscriptionResponse);
+  // Returns a stream of status updates followed by the final transcript.
+  rpc TranscribeStreamV2(stream TranscribeStreamRequest) returns (stream TranscribeStreamResponse);
 
   // Note Service
   rpc CreateNote(CreateNoteRequest) returns (Note);
@@ -122,6 +123,23 @@ message TranscribeStreamRequest {
 message TranscriptionResponse {
   string transcript = 1;
   ClientError error = 2;
+}
+
+// Phase indicators for streaming transcription status updates.
+enum TranscribePhase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_PROCESSING = 1;    // ASR in progress
+  PHASE_POLISHING = 2;     // Polish LLM in progress (TRANSCRIBE mode)
+  PHASE_COMPLETE = 3;      // Final result ready
+  PHASE_EDITING = 4;       // Edit LLM in progress (EDIT mode)
+}
+
+// Streaming response message for TranscribeStreamV2.
+// Yields status updates during processing, followed by the final transcript.
+message TranscribeStreamResponse {
+  TranscribePhase phase = 1;
+  optional string transcript = 2;  // Only set when phase = PHASE_COMPLETE
+  optional ClientError error = 3;
 }
 
 // Notes
@@ -263,6 +281,11 @@ message LlmSettings {
   optional float no_speech_threshold = 9;
   optional float low_quality_threshold = 10;
   optional string llm_base_url = 11;
+  // Polish mode settings for TRANSCRIBE
+  optional bool polish_enabled = 12;
+  optional string polish_llm_provider = 13;
+  optional string polish_llm_model = 14;
+  optional float polish_llm_temperature = 15;
 }
 
 message AdvancedSettings {

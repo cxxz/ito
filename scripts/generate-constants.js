@@ -36,6 +36,12 @@ export const DEFAULT_ADVANCED_SETTINGS = {
   
   // Audio quality thresholds
   noSpeechThreshold: ${DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold},
+
+  // Polish mode settings for TRANSCRIBE
+  polishEnabled: ${DEFAULT_ADVANCED_SETTINGS.polishEnabled},
+  polishLlmProvider: '${DEFAULT_ADVANCED_SETTINGS.polishLlmProvider}',
+  polishLlmModel: '${DEFAULT_ADVANCED_SETTINGS.polishLlmModel}',
+  polishLlmTemperature: ${DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature},
 } as const;
 `
 

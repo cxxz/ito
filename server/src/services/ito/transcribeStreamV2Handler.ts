@@ -7,7 +7,9 @@ import {
   StreamConfig,
   StreamConfigSchema,
   TranscribeStreamRequest,
-  TranscriptionResponseSchema,
+  TranscribeStreamResponse,
+  TranscribeStreamResponseSchema,
+  TranscribePhase,
 } from '../../generated/ito_pb.js'
 import { getAsrProvider, getLlmProvider } from '../../clients/providerUtils.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
@@ -35,10 +37,10 @@ import { v4 as uuidv4 } from 'uuid'
 export class TranscribeStreamV2Handler {
   private readonly MODE_CHANGE_GRACE_PERIOD_MS = 100
 
-  async process(
+  async *process(
     requests: AsyncIterable<TranscribeStreamRequest>,
     context?: HandlerContext,
-  ) {
+  ): AsyncIterable<TranscribeStreamResponse> {
     const startTime = Date.now()
 
     console.log(`📩 [${new Date().toISOString()}] Starting TranscribeStreamV2`)
@@ -128,18 +130,18 @@ export class TranscribeStreamV2Handler {
       // Store original ASR transcript before adjustment
       const originalTranscript = transcript
 
-      // Time transcript adjustment (only happens in EDIT mode)
-      // transcript = await serverTimingCollector.timeAsync(
-      //   ServerTimingEventName.LLM_ADJUSTMENT,
-      //   () =>
-      //     this.adjustTranscriptForMode(
-      //       transcript,
-      //       mode,
-      //       windowContext,
-      //       advancedSettings,
-      //     ),
-      //   interactionId,
-      // )
+      // Yield status before calling LLM (polish or edit)
+      if (mode === ItoMode.TRANSCRIBE && advancedSettings.polishEnabled) {
+        yield create(TranscribeStreamResponseSchema, {
+          phase: TranscribePhase.PHASE_POLISHING,
+        })
+      } else if (mode === ItoMode.EDIT) {
+        yield create(TranscribeStreamResponseSchema, {
+          phase: TranscribePhase.PHASE_EDITING,
+        })
+      }
+
+      // Time transcript adjustment (only happens in EDIT mode or TRANSCRIBE with polish)
       transcript = await this.adjustTranscriptForMode(
         transcript,
         mode,
@@ -210,7 +212,8 @@ export class TranscribeStreamV2Handler {
         `✅ [${new Date().toISOString()}] TranscribeStreamV2 completed in ${duration}ms`,
       )
 
-      return create(TranscriptionResponseSchema, {
+      yield create(TranscribeStreamResponseSchema, {
+        phase: TranscribePhase.PHASE_COMPLETE,
         transcript,
       })
     } catch (error: any) {
@@ -225,7 +228,8 @@ export class TranscribeStreamV2Handler {
 
       console.error('Failed to process TranscribeStreamV2:', error)
 
-      return create(TranscriptionResponseSchema, {
+      yield create(TranscribeStreamResponseSchema, {
+        phase: TranscribePhase.PHASE_COMPLETE,
         transcript: '',
         error: errorToProtobuf(
           error,
@@ -390,6 +394,16 @@ export class TranscribeStreamV2Handler {
     )
     const defaultLlmModel = getDefaultLlmModel(llmProvider)
 
+    // Polish mode settings
+    const polishEnabled =
+      mergedConfig.llmSettings?.polishEnabled ??
+      DEFAULT_ADVANCED_SETTINGS.polishEnabled
+    const polishLlmProvider = this.resolveOrDefault(
+      mergedConfig.llmSettings?.polishLlmProvider,
+      DEFAULT_ADVANCED_SETTINGS.polishLlmProvider,
+    )
+    const defaultPolishLlmModel = getDefaultLlmModel(polishLlmProvider)
+
     return {
       asrModel: this.resolveOrDefault(
         asrModel,
@@ -423,6 +437,17 @@ export class TranscribeStreamV2Handler {
       noSpeechThreshold: this.resolveOrDefault(
         noSpeechThreshold,
         DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold,
+      ),
+      // Polish mode settings
+      polishEnabled,
+      polishLlmProvider,
+      polishLlmModel: this.resolveOrDefault(
+        mergedConfig.llmSettings?.polishLlmModel,
+        defaultPolishLlmModel,
+      ),
+      polishLlmTemperature: this.resolveOrDefault(
+        mergedConfig.llmSettings?.polishLlmTemperature,
+        DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature,
       ),
     }
   }
@@ -464,29 +489,61 @@ export class TranscribeStreamV2Handler {
       `[${new Date().toISOString()}] Detected mode: ${mode}, adjusting transcript`,
     )
 
-    if (mode !== ItoMode.EDIT) {
-      return transcript
+    // Handle EDIT mode (existing behavior)
+    if (mode === ItoMode.EDIT) {
+      const userPromptPrefix = getPromptForMode(mode, advancedSettings)
+      const userPrompt = createUserPromptWithContext(transcript, windowContext)
+      const llmProvider = getLlmProvider(advancedSettings.llmProvider)
+
+      const adjustedTranscript = await serverTimingCollector.timeAsync(
+        ServerTimingEventName.LLM_ADJUSTMENT,
+        () =>
+          llmProvider.adjustTranscript(userPromptPrefix + '\n' + userPrompt, {
+            temperature: advancedSettings.llmTemperature,
+            model: advancedSettings.llmModel,
+            prompt: ITO_MODE_SYSTEM_PROMPT[mode],
+          }),
+      )
+
+      console.log(
+        `📝 [${new Date().toISOString()}] Adjusted transcript (EDIT): "${adjustedTranscript}"`,
+      )
+
+      return adjustedTranscript
     }
 
-    const userPromptPrefix = getPromptForMode(mode, advancedSettings)
-    const userPrompt = createUserPromptWithContext(transcript, windowContext)
-    const llmProvider = getLlmProvider(advancedSettings.llmProvider)
+    // Handle TRANSCRIBE mode with optional polish
+    if (mode === ItoMode.TRANSCRIBE && advancedSettings.polishEnabled) {
+      console.log(
+        `[${new Date().toISOString()}] Polish enabled for TRANSCRIBE mode`,
+      )
 
-    const adjustedTranscript = await serverTimingCollector.timeAsync(
-      ServerTimingEventName.LLM_ADJUSTMENT,
-      () =>
-        llmProvider.adjustTranscript(userPromptPrefix + '\n' + userPrompt, {
-          temperature: advancedSettings.llmTemperature,
-          model: advancedSettings.llmModel,
-          prompt: ITO_MODE_SYSTEM_PROMPT[mode],
-        }),
-    )
+      // Use transcriptionPrompt for polishing
+      const userPromptPrefix = getPromptForMode(mode, advancedSettings)
+      const userPrompt = createUserPromptWithContext(transcript, windowContext)
 
-    console.log(
-      `📝 [${new Date().toISOString()}] Adjusted transcript: "${adjustedTranscript}"`,
-    )
+      // Use polish-specific LLM settings
+      const llmProvider = getLlmProvider(advancedSettings.polishLlmProvider)
 
-    return adjustedTranscript
+      const polishedTranscript = await serverTimingCollector.timeAsync(
+        ServerTimingEventName.LLM_ADJUSTMENT,
+        () =>
+          llmProvider.adjustTranscript(userPromptPrefix + '\n' + userPrompt, {
+            temperature: advancedSettings.polishLlmTemperature,
+            model: advancedSettings.polishLlmModel,
+            prompt: ITO_MODE_SYSTEM_PROMPT[mode],
+          }),
+      )
+
+      console.log(
+        `📝 [${new Date().toISOString()}] Polished transcript: "${polishedTranscript}"`,
+      )
+
+      return polishedTranscript
+    }
+
+    // Default: return raw transcript (TRANSCRIBE mode without polish)
+    return transcript
   }
 
   private mergeStreamConfigs(

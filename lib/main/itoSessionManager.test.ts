@@ -288,9 +288,9 @@ describe('itoSessionManager', () => {
     expect(mockContextGrabber.gatherVocabularyWords).toHaveBeenCalledWith(
       ItoMode.TRANSCRIBE,
     )
-    expect(mockItoStreamController.scheduleVocabularyUpdate).toHaveBeenCalledWith(
-      ['custom-term'],
-    )
+    expect(
+      mockItoStreamController.scheduleVocabularyUpdate,
+    ).toHaveBeenCalledWith(['custom-term'])
   })
 
   test('should cancel session when audio too short', async () => {

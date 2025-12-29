@@ -10,12 +10,15 @@ import { AudioBars } from './contents/AudioBars'
 import { PreviewAudioBars } from './contents/PreviewAudioBars'
 import { LoadingAnimation } from './contents/LoadingAnimation'
 import { RecordingTimer } from './contents/RecordingTimer'
+import { AnimatedStatusText } from './contents/AnimatedStatusText'
 import { useAudioStore } from '@/app/store/useAudioStore'
 import { TooltipButton } from './contents/TooltipButton'
 import { analytics, ANALYTICS_EVENTS } from '../analytics'
 import type {
   RecordingStatePayload,
   ProcessingStatePayload,
+  PolishStatePayload,
+  EditingStatePayload,
 } from '@/lib/types/ipc'
 import { ItoMode } from '@/app/generated/ito_pb'
 
@@ -76,6 +79,8 @@ const Pill = () => {
   const [isRecording, setIsRecording] = useState(false)
   const [isManualRecording, setIsManualRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isPolishing, setIsPolishing] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [recordingMode, setRecordingMode] = useState<ItoMode | undefined>()
   const isManualRecordingRef = useRef(false)
@@ -136,6 +141,22 @@ const Pill = () => {
       },
     )
 
+    // Listen for polish state changes from the main process
+    const unsubPolish = window.api.on(
+      'polish-state-update',
+      (state: PolishStatePayload) => {
+        setIsPolishing(state.isPolishing)
+      },
+    )
+
+    // Listen for editing state changes from the main process
+    const unsubEditing = window.api.on(
+      'editing-state-update',
+      (state: EditingStatePayload) => {
+        setIsEditing(state.isEditing)
+      },
+    )
+
     // Listen for volume updates from the main process
     const unsubVolume = window.api.on('volume-update', (vol: number) => {
       // throttle the volume updates to 64ms
@@ -191,6 +212,8 @@ const Pill = () => {
     return () => {
       unsubRecording()
       unsubProcessing()
+      unsubPolish()
+      unsubEditing()
       unsubVolume()
       unsubSettings()
       unsubOnboarding()
@@ -234,6 +257,10 @@ const Pill = () => {
   const manualRecordingHeight = 32
   const processingWidth = 84
   const processingHeight = 32
+  const polishingWidth = 120 // Same width as recording phase
+  const polishingHeight = 32
+  const editingWidth = 120 // Same width as recording phase
+  const editingHeight = 32
 
   // Determine current state
   const anyRecording = isRecording || isManualRecording
@@ -256,8 +283,17 @@ const Pill = () => {
     currentHeight = recordingHeight
     backgroundColor = '#000000'
   } else if (isProcessing) {
-    currentWidth = processingWidth
-    currentHeight = processingHeight
+    // Use wider dimensions when polishing or editing to fit the text
+    if (isPolishing) {
+      currentWidth = polishingWidth
+      currentHeight = polishingHeight
+    } else if (isEditing) {
+      currentWidth = editingWidth
+      currentHeight = editingHeight
+    } else {
+      currentWidth = processingWidth
+      currentHeight = processingHeight
+    }
     backgroundColor = '#000000'
   } else if (isHovered) {
     currentWidth = hoveredWidth
@@ -411,6 +447,22 @@ const Pill = () => {
     }
 
     if (isProcessing) {
+      if (isPolishing) {
+        return (
+          <AnimatedStatusText
+            text="Polishing"
+            color={getAudioBarColor(recordingMode)}
+          />
+        )
+      }
+      if (isEditing) {
+        return (
+          <AnimatedStatusText
+            text="Editing"
+            color={getAudioBarColor(recordingMode)}
+          />
+        )
+      }
       return <LoadingAnimation color={getAudioBarColor(recordingMode)} />
     }
 

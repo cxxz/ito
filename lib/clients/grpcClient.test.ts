@@ -366,9 +366,9 @@ describe('GrpcClient Business Logic Tests', () => {
 
       await grpcClient.updateAdvancedSettings(settings as any)
 
-      expect(mockGrpcClientMethods.updateAdvancedSettings).toHaveBeenCalledTimes(
-        1,
-      )
+      expect(
+        mockGrpcClientMethods.updateAdvancedSettings,
+      ).toHaveBeenCalledTimes(1)
 
       const [request] = (mockGrpcClientMethods.updateAdvancedSettings as any)
         .mock.calls[0]

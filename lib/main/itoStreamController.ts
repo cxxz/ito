@@ -5,6 +5,8 @@ import {
   StreamConfigSchema,
   ContextInfoSchema,
   LlmSettingsSchema,
+  TranscribeStreamResponse,
+  TranscribePhase,
 } from '@/app/generated/ito_pb'
 import { create } from '@bufbuild/protobuf'
 import { grpcClient } from '../clients/grpcClient'
@@ -48,9 +50,12 @@ export class ItoStreamController {
   /**
    * Starts the gRPC stream immediately without waiting for minimum audio duration.
    * Returns a promise that resolves with the transcription response and audio data.
+   * @param onPhaseUpdate - Optional callback to receive phase updates (e.g., PHASE_POLISHING)
    */
-  public async startGrpcStream(): Promise<{
-    response: any
+  public async startGrpcStream(
+    onPhaseUpdate?: (phase: TranscribePhase) => void,
+  ): Promise<{
+    response: TranscribeStreamResponse
     audioBuffer: Buffer
     sampleRate: number
   }> {
@@ -74,6 +79,7 @@ export class ItoStreamController {
         await grpcClient.transcribeStreamV2(
           this.createStreamGenerator(),
           abortSignal,
+          onPhaseUpdate,
         ),
     )
 
@@ -260,11 +266,18 @@ export class ItoStreamController {
             llmModel: context.advancedSettings.llm.llmModel ?? undefined,
             llmTemperature:
               context.advancedSettings.llm.llmTemperature ?? undefined,
-
             transcriptionPrompt:
               context.advancedSettings.llm.transcriptionPrompt ?? undefined,
             editingPrompt:
               context.advancedSettings.llm.editingPrompt ?? undefined,
+            polishEnabled:
+              context.advancedSettings.llm.polishEnabled ?? undefined,
+            polishLlmProvider:
+              context.advancedSettings.llm.polishLlmProvider ?? undefined,
+            polishLlmModel:
+              context.advancedSettings.llm.polishLlmModel ?? undefined,
+            polishLlmTemperature:
+              context.advancedSettings.llm.polishLlmTemperature ?? undefined,
           }),
           vocabulary: context.vocabularyWords,
           interactionId: interactionId || undefined,

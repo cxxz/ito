@@ -1,4 +1,4 @@
-import { ItoMode } from '@/app/generated/ito_pb'
+import { ItoMode, TranscribePhase } from '@/app/generated/ito_pb'
 import { voiceInputService } from './voiceInputService'
 import { recordingStateNotifier } from './recordingStateNotifier'
 import { itoStreamController } from './itoStreamController'
@@ -44,7 +44,14 @@ export class ItoSessionManager {
     }
 
     // Begin gRPC stream immediately (note, no audio is flowing yet)
-    this.streamResponsePromise = itoStreamController.startGrpcStream()
+    // Pass a phase update callback to notify UI when polishing or editing starts
+    this.streamResponsePromise = itoStreamController.startGrpcStream(phase => {
+      if (phase === TranscribePhase.PHASE_POLISHING) {
+        recordingStateNotifier.notifyPolishingStarted()
+      } else if (phase === TranscribePhase.PHASE_EDITING) {
+        recordingStateNotifier.notifyEditingStarted()
+      }
+    })
 
     // Begin recording audio (audio bytes will now flow into the gRPC stream)
     voiceInputService.startAudioRecording()
@@ -233,7 +240,9 @@ export class ItoSessionManager {
         )
         await this.handleTranscriptionError(error)
       } finally {
-        // Always notify processing stopped after handling response
+        // Always notify processing, polishing, and editing stopped after handling response
+        recordingStateNotifier.notifyEditingStopped()
+        recordingStateNotifier.notifyPolishingStopped()
         recordingStateNotifier.notifyProcessingStopped()
       }
     } else {

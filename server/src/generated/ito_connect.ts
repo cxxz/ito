@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { AdvancedSettings, AudioChunk, CreateDictionaryItemRequest, CreateInteractionRequest, CreateNoteRequest, DeleteDictionaryItemRequest, DeleteInteractionRequest, DeleteNoteRequest, DeleteUserDataRequest, DictionaryItem, Empty, GetAdvancedSettingsRequest, GetInteractionRequest, GetNoteRequest, Interaction, ListDictionaryItemsRequest, ListDictionaryItemsResponse, ListInteractionsRequest, ListInteractionsResponse, ListNotesRequest, ListNotesResponse, Note, SubmitTimingReportsRequest, SubmitTimingReportsResponse, TranscribeStreamRequest, TranscriptionResponse, UpdateAdvancedSettingsRequest, UpdateDictionaryItemRequest, UpdateInteractionRequest, UpdateNoteRequest } from "./ito_pb.js";
+import { AdvancedSettings, AudioChunk, CreateDictionaryItemRequest, CreateInteractionRequest, CreateNoteRequest, DeleteDictionaryItemRequest, DeleteInteractionRequest, DeleteNoteRequest, DeleteUserDataRequest, DictionaryItem, Empty, GetAdvancedSettingsRequest, GetInteractionRequest, GetNoteRequest, Interaction, ListDictionaryItemsRequest, ListDictionaryItemsResponse, ListInteractionsRequest, ListInteractionsResponse, ListNotesRequest, ListNotesResponse, Note, SubmitTimingReportsRequest, SubmitTimingReportsResponse, TranscribeStreamRequest, TranscribeStreamResponse, TranscriptionResponse, UpdateAdvancedSettingsRequest, UpdateDictionaryItemRequest, UpdateInteractionRequest, UpdateNoteRequest } from "./ito_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -28,14 +28,15 @@ export const ItoService = {
      * Enhanced streaming transcription that accepts configuration data in-stream.
      * Config can be sent before, during, or omitted entirely. Multiple config messages
      * are merged by the server. This allows immediate streaming without waiting for context.
+     * Returns a stream of status updates followed by the final transcript.
      *
      * @generated from rpc ito.ItoService.TranscribeStreamV2
      */
     transcribeStreamV2: {
       name: "TranscribeStreamV2",
       I: TranscribeStreamRequest,
-      O: TranscriptionResponse,
-      kind: MethodKind.ClientStreaming,
+      O: TranscribeStreamResponse,
+      kind: MethodKind.BiDiStreaming,
     },
     /**
      * Note Service

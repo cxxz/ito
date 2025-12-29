@@ -54,6 +54,12 @@ When you receive a transcript, immediately return the polished version following
 
   // Audio quality thresholds
   noSpeechThreshold: 0.6,
+
+  // Polish mode settings for TRANSCRIBE
+  polishEnabled: false,
+  polishLlmProvider: 'cerebras',
+  polishLlmModel: 'zai-glm-4.6',
+  polishLlmTemperature: 1.0,
 }
 
 module.exports = { DEFAULT_ADVANCED_SETTINGS }

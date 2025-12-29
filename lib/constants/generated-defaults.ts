@@ -13,7 +13,7 @@ export const DEFAULT_ADVANCED_SETTINGS = {
   // LLM (Large Language Model) settings
   llmProvider: 'cerebras',
   llmModel: 'qwen-3-235b-a22b-instruct-2507',
-  llmTemperature: 0,
+  llmTemperature: 1,
   llmBaseUrl: '',
 
   // Prompt settings
@@ -51,4 +51,10 @@ When you receive a transcript, immediately return the polished version following
 
   // Audio quality thresholds
   noSpeechThreshold: 0.6,
+
+  // Polish mode settings for TRANSCRIBE
+  polishEnabled: false,
+  polishLlmProvider: 'cerebras',
+  polishLlmModel: 'qwen-3-235b-a22b-instruct-2507',
+  polishLlmTemperature: 1,
 } as const

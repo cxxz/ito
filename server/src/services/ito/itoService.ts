@@ -130,6 +130,13 @@ function dbToAdvancedSettingsPb(
         dbAdvancedSettings.llm.no_speech_threshold ?? undefined,
       lowQualityThreshold:
         dbAdvancedSettings.llm.low_quality_threshold ?? undefined,
+      polishEnabled: dbAdvancedSettings.llm.polish_enabled ?? undefined,
+      polishLlmProvider: toOptionalString(
+        dbAdvancedSettings.llm.polish_llm_provider,
+      ),
+      polishLlmModel: toOptionalString(dbAdvancedSettings.llm.polish_llm_model),
+      polishLlmTemperature:
+        dbAdvancedSettings.llm.polish_llm_temperature ?? undefined,
     }),
     default: resolvedDefaults,
     llmProviderDefaultModels: getProviderDefaultLlmModels(),
@@ -139,11 +146,11 @@ function dbToAdvancedSettingsPb(
 // Export the service implementation as a function that takes a ConnectRouter
 export default (router: ConnectRouter) => {
   router.service(ItoServiceDesc, {
-    async transcribeStreamV2(
+    async *transcribeStreamV2(
       requests: AsyncIterable<TranscribeStreamRequest>,
       context: HandlerContext,
     ) {
-      return transcribeStreamV2Handler.process(requests, context)
+      yield* transcribeStreamV2Handler.process(requests, context)
     },
 
     /**

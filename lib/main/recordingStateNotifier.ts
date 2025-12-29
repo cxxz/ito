@@ -4,6 +4,8 @@ import {
   IPC_EVENTS,
   RecordingStatePayload,
   ProcessingStatePayload,
+  PolishStatePayload,
+  EditingStatePayload,
 } from '../types/ipc'
 
 /**
@@ -41,9 +43,41 @@ export class RecordingStateNotifier {
     })
   }
 
+  public notifyPolishingStarted() {
+    console.log('[RecordingStateNotifier] Notifying polishing started')
+    this.sendToWindows(IPC_EVENTS.POLISH_STATE_UPDATE, {
+      isPolishing: true,
+    })
+  }
+
+  public notifyPolishingStopped() {
+    console.log('[RecordingStateNotifier] Notifying polishing stopped')
+    this.sendToWindows(IPC_EVENTS.POLISH_STATE_UPDATE, {
+      isPolishing: false,
+    })
+  }
+
+  public notifyEditingStarted() {
+    console.log('[RecordingStateNotifier] Notifying editing started')
+    this.sendToWindows(IPC_EVENTS.EDITING_STATE_UPDATE, {
+      isEditing: true,
+    })
+  }
+
+  public notifyEditingStopped() {
+    console.log('[RecordingStateNotifier] Notifying editing stopped')
+    this.sendToWindows(IPC_EVENTS.EDITING_STATE_UPDATE, {
+      isEditing: false,
+    })
+  }
+
   private sendToWindows(
     event: string,
-    payload: RecordingStatePayload | ProcessingStatePayload,
+    payload:
+      | RecordingStatePayload
+      | ProcessingStatePayload
+      | PolishStatePayload
+      | EditingStatePayload,
   ) {
     // Send to pill window
     getPillWindow()?.webContents.send(event, payload)

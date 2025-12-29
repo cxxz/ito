@@ -1,3 +1,4 @@
+import http2 from 'node:http2'
 import { fastify } from 'fastify'
 import { fastifyConnectPlugin } from '@connectrpc/connect-fastify'
 import { createContextValues } from '@connectrpc/connect'
@@ -16,6 +17,12 @@ export const startServer = async () => {
   const connectRpcServer = fastify({
     logger: process.env.SHOW_ALL_REQUEST_LOGS === 'true',
     trustProxy: true,
+    // Use serverFactory to create HTTP/2 server manually.
+    // This avoids a Fastify bug where session close handlers have incorrect `this` binding
+    // causing "TypeError: this.close is not a function" errors after stream completion.
+    serverFactory: handler => {
+      return http2.createServer(handler)
+    },
   })
 
   await connectRpcServer.register(cors, { origin: '*' })

@@ -25,6 +25,8 @@ import {
   SubmitTimingReportsRequestSchema,
   ItoMode,
   TranscribeStreamRequest,
+  TranscribeStreamResponse,
+  TranscribePhase,
 } from '@/app/generated/ito_pb'
 import { createClient } from '@connectrpc/connect'
 import { createConnectTransport } from '@connectrpc/connect-node'
@@ -48,7 +50,8 @@ class GrpcClient {
   constructor() {
     const transport = createConnectTransport({
       baseUrl: import.meta.env.VITE_GRPC_BASE_URL,
-      httpVersion: '1.1',
+      // Use HTTP/2 for bidirectional streaming support (required for TranscribeStreamV2 phase updates)
+      httpVersion: '2',
     })
     console.log(
       'Creating gRPC client with base URL:',
@@ -205,13 +208,28 @@ class GrpcClient {
   async transcribeStreamV2(
     stream: AsyncIterable<TranscribeStreamRequest>,
     signal?: AbortSignal,
-  ) {
+    onPhaseUpdate?: (phase: TranscribePhase) => void,
+  ): Promise<TranscribeStreamResponse> {
     return this.withRetry(async () => {
-      const response = await this.client.transcribeStreamV2(stream, {
+      const responseStream = this.client.transcribeStreamV2(stream, {
         headers: this.getHeaders(),
         signal,
       })
-      return response
+
+      let finalResponse: TranscribeStreamResponse | null = null
+      for await (const response of responseStream) {
+        if (onPhaseUpdate) {
+          onPhaseUpdate(response.phase)
+        }
+        if (response.phase === TranscribePhase.PHASE_COMPLETE) {
+          finalResponse = response
+        }
+      }
+
+      if (!finalResponse) {
+        throw new Error('No final response received from transcription stream')
+      }
+      return finalResponse
     })
   }
 
@@ -420,6 +438,10 @@ class GrpcClient {
           editingPrompt: settings.llm.editingPrompt ?? undefined,
           llmTemperature: settings.llm.llmTemperature ?? undefined,
           noSpeechThreshold: settings.llm.noSpeechThreshold ?? undefined,
+          polishEnabled: settings.llm.polishEnabled ?? undefined,
+          polishLlmProvider: settings.llm.polishLlmProvider ?? undefined,
+          polishLlmModel: settings.llm.polishLlmModel ?? undefined,
+          polishLlmTemperature: settings.llm.polishLlmTemperature ?? undefined,
         },
       })
       return await this.client.updateAdvancedSettings(request, {

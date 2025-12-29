@@ -301,6 +301,10 @@ export class AdvancedSettingsRepository {
         editing_prompt: llmSettings.editing_prompt,
         no_speech_threshold: llmSettings.no_speech_threshold,
         low_quality_threshold: llmSettings.low_quality_threshold,
+        polish_enabled: llmSettings.polish_enabled,
+        polish_llm_provider: llmSettings.polish_llm_provider,
+        polish_llm_model: llmSettings.polish_llm_model,
+        polish_llm_temperature: llmSettings.polish_llm_temperature,
       },
       created_at: llmSettings.created_at,
       updated_at: llmSettings.updated_at,
@@ -321,9 +325,10 @@ export class AdvancedSettingsRepository {
       `INSERT INTO llm_settings (
          user_id, asr_model, asr_provider, asr_prompt, llm_provider, llm_model,
          llm_temperature, llm_base_url, transcription_prompt, editing_prompt, no_speech_threshold,
-         low_quality_threshold, updated_at
+         low_quality_threshold, polish_enabled, polish_llm_provider, polish_llm_model,
+         polish_llm_temperature, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, current_timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, current_timestamp)
        ON CONFLICT (user_id)
        DO UPDATE SET
          asr_model = EXCLUDED.asr_model,
@@ -337,6 +342,10 @@ export class AdvancedSettingsRepository {
          editing_prompt = EXCLUDED.editing_prompt,
          no_speech_threshold = EXCLUDED.no_speech_threshold,
          low_quality_threshold = EXCLUDED.low_quality_threshold,
+         polish_enabled = EXCLUDED.polish_enabled,
+         polish_llm_provider = EXCLUDED.polish_llm_provider,
+         polish_llm_model = EXCLUDED.polish_llm_model,
+         polish_llm_temperature = EXCLUDED.polish_llm_temperature,
          updated_at = current_timestamp
        RETURNING *`,
       [
@@ -352,6 +361,10 @@ export class AdvancedSettingsRepository {
         toNullableString(settingsData.llm?.editingPrompt),
         settingsData.llm?.noSpeechThreshold ?? null,
         settingsData.llm?.lowQualityThreshold ?? null,
+        settingsData.llm?.polishEnabled ?? null,
+        toNullableString(settingsData.llm?.polishLlmProvider),
+        toNullableString(settingsData.llm?.polishLlmModel),
+        settingsData.llm?.polishLlmTemperature ?? null,
       ],
     )
 
@@ -371,6 +384,10 @@ export class AdvancedSettingsRepository {
         editing_prompt: llmSettings.editing_prompt,
         no_speech_threshold: llmSettings.no_speech_threshold,
         low_quality_threshold: llmSettings.low_quality_threshold,
+        polish_enabled: llmSettings.polish_enabled,
+        polish_llm_provider: llmSettings.polish_llm_provider,
+        polish_llm_model: llmSettings.polish_llm_model,
+        polish_llm_temperature: llmSettings.polish_llm_temperature,
       },
       created_at: llmSettings.created_at,
       updated_at: llmSettings.updated_at,

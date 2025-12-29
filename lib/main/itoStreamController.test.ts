@@ -1,9 +1,20 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
-import { ItoMode } from '@/app/generated/ito_pb'
+import {
+  ItoMode,
+  TranscribePhase,
+  TranscribeStreamResponseSchema,
+} from '@/app/generated/ito_pb'
+import { create } from '@bufbuild/protobuf'
+
+const createMockResponse = (transcript: string) =>
+  create(TranscribeStreamResponseSchema, {
+    phase: TranscribePhase.PHASE_COMPLETE,
+    transcript,
+  })
 
 const mockGrpcClient = {
   transcribeStreamV2: mock(() =>
-    Promise.resolve({ transcript: 'default' } as any),
+    Promise.resolve(createMockResponse('default')),
   ),
 }
 mock.module('../clients/grpcClient', () => ({
@@ -62,6 +73,10 @@ const mockContextGrabber = {
           llmBaseUrl: null,
           transcriptionPrompt: '',
           editingPrompt: '',
+          polishEnabled: false,
+          polishLlmProvider: null,
+          polishLlmModel: null,
+          polishLlmTemperature: null,
         },
         grammarServiceEnabled: false,
         macosAccessibilityContextEnabled: true,
@@ -93,9 +108,9 @@ describe('ItoStreamController', () => {
     Object.values(mockContextGrabber).forEach(mockFn => mockFn.mockClear())
 
     mockGrpcClient.transcribeStreamV2.mockClear()
-    mockGrpcClient.transcribeStreamV2.mockResolvedValue({
-      transcript: 'default',
-    })
+    mockGrpcClient.transcribeStreamV2.mockResolvedValue(
+      createMockResponse('default'),
+    )
 
     // Reset default behaviors
     mockAudioStreamManager.isCurrentlyStreaming.mockReturnValue(false)
@@ -131,10 +146,7 @@ describe('ItoStreamController', () => {
     const { ItoStreamController } = await import('./itoStreamController')
     const controller = new ItoStreamController()
 
-    const mockResponse = {
-      transcript: 'Hello world',
-      audio: Buffer.from('audio'),
-    }
+    const mockResponse = createMockResponse('Hello world')
     mockGrpcClient.transcribeStreamV2.mockResolvedValueOnce(mockResponse)
 
     await controller.initialize(ItoMode.TRANSCRIBE)

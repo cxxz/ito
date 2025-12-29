@@ -21,6 +21,7 @@ type LlmSettingConfig = {
   resize?: boolean
   readOnly?: boolean
   isSelect?: boolean
+  isToggle?: boolean
   options?: string[]
 }
 
@@ -120,6 +121,39 @@ const llmSettingsConfig: LlmSettingConfig[] = [
     description: 'Threshold for detecting no speech segments in audio.',
     maxLength: floatLengthLimit,
   },
+  // Polish mode settings
+  {
+    name: 'polishEnabled',
+    label: 'Polish Transcriptions',
+    placeholder: '',
+    description:
+      'Clean up speech disfluencies (uh, um, false starts) using LLM in Transcribe mode.',
+    maxLength: 0,
+    isToggle: true,
+  },
+  {
+    name: 'polishLlmProvider',
+    label: 'Polish LLM Provider',
+    placeholder: 'Select provider',
+    description: 'LLM provider for polishing transcriptions.',
+    maxLength: modelProviderLengthLimit,
+    isSelect: true,
+    options: ['groq', 'cerebras', 'openai'],
+  },
+  {
+    name: 'polishLlmModel',
+    label: 'Polish LLM Model',
+    placeholder: 'Enter model name',
+    description: 'LLM model for polishing transcriptions.',
+    maxLength: modelProviderLengthLimit,
+  },
+  {
+    name: 'polishLlmTemperature',
+    label: 'Polish LLM Temperature',
+    placeholder: 'e.g., 1.0',
+    description: 'Temperature for polish LLM.',
+    maxLength: floatLengthLimit,
+  },
 ]
 
 function formatDisplayValue(value: string | number | null): string {
@@ -135,7 +169,7 @@ function formatDisplayValue(value: string | number | null): string {
 
 interface SettingInputProps {
   config: LlmSettingConfig
-  value: string | number | null
+  value: string | number | boolean | null
   onChange: (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
     config: LlmSettingConfig,
@@ -159,10 +193,17 @@ const SettingInput = memo(function SettingInput({
     [onChange, config],
   )
 
+  const handleCheckboxChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      onChange(e, config)
+    },
+    [onChange, config],
+  )
+
   const handleFocus = useCallback(() => {
     setIsFocused(true)
     // Start with the formatted display value to avoid jarring transition
-    const startValue = formatDisplayValue(value)
+    const startValue = formatDisplayValue(value as string | number | null)
     setEditingValue(startValue)
   }, [value])
 
@@ -171,7 +212,34 @@ const SettingInput = memo(function SettingInput({
     setEditingValue('')
   }, [])
 
-  const displayValue = isFocused ? editingValue : formatDisplayValue(value)
+  const displayValue = isFocused
+    ? editingValue
+    : formatDisplayValue(value as string | number | null)
+
+  // Handle toggle/checkbox input
+  if (config.isToggle) {
+    return (
+      <div className="mb-5">
+        <label className="flex items-start gap-3 ml-1">
+          <input
+            type="checkbox"
+            id={config.name}
+            checked={value === true}
+            onChange={handleCheckboxChange}
+            className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-700">
+              {config.label}
+            </span>
+            <span className="block text-xs text-slate-500 mt-1">
+              {config.description}
+            </span>
+          </span>
+        </label>
+      </div>
+    )
+  }
 
   return (
     <div className="mb-5">
@@ -184,7 +252,7 @@ const SettingInput = memo(function SettingInput({
       {config.isSelect ? (
         <select
           id={config.name}
-          value={value ?? ''}
+          value={(value as string) ?? ''}
           onChange={handleChange}
           className="w-3/4 ml-1 px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           disabled={config.readOnly}
@@ -236,11 +304,25 @@ export default function AdvancedSettingsContent() {
 
   // Helper to resolve null to actual default value for display
   const getDisplayValue = useCallback(
-    (key: keyof LlmSettings): string | number | null => {
+    (key: keyof LlmSettings): string | number | boolean | null => {
       const value = llm[key]
-      if (value === null) {
+      if (value === null || value === undefined) {
         if (key === 'llmModel') {
           const resolvedProvider = llm.llmProvider ?? defaults?.llmProvider
+          if (resolvedProvider) {
+            const providerDefaults =
+              llmProviderDefaultModels ?? FALLBACK_PROVIDER_DEFAULT_MODELS
+            const providerDefaultModel = providerDefaults[resolvedProvider]
+            if (providerDefaultModel) {
+              return providerDefaultModel
+            }
+          }
+        }
+
+        // Handle polishLlmModel similarly to llmModel
+        if (key === 'polishLlmModel') {
+          const resolvedProvider =
+            llm.polishLlmProvider ?? defaults?.polishLlmProvider
           if (resolvedProvider) {
             const providerDefaults =
               llmProviderDefaultModels ?? FALLBACK_PROVIDER_DEFAULT_MODELS
@@ -312,11 +394,26 @@ export default function AdvancedSettingsContent() {
       e: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
       config: LlmSettingConfig,
     ) => {
+      // Handle toggle/checkbox fields
+      if (config.isToggle) {
+        const checked = (e.target as HTMLInputElement).checked
+        const updatedLlm = { ...llm, [config.name]: checked }
+        setLlmSettings({ [config.name]: checked })
+        scheduleAdvancedSettingsUpdate(
+          updatedLlm,
+          grammarServiceEnabled,
+          macosAccessibilityContextEnabled,
+        )
+        return
+      }
+
       const rawValue = e.target.value
 
       // Determine if this field should be a number
       const isNumericField =
-        config.name === 'llmTemperature' || config.name === 'noSpeechThreshold'
+        config.name === 'llmTemperature' ||
+        config.name === 'noSpeechThreshold' ||
+        config.name === 'polishLlmTemperature'
 
       // Parse the value appropriately
       let newValue: string | number | null
@@ -335,6 +432,13 @@ export default function AdvancedSettingsContent() {
       if (config.name === 'llmProvider' && typeof newValue === 'string') {
         updatedLlm = { ...updatedLlm, llmModel: null }
         setLlmSettings({ [config.name]: newValue, llmModel: null })
+      } else if (
+        config.name === 'polishLlmProvider' &&
+        typeof newValue === 'string'
+      ) {
+        // Auto-update polishLlmModel when polishLlmProvider changes
+        updatedLlm = { ...updatedLlm, polishLlmModel: null }
+        setLlmSettings({ [config.name]: newValue, polishLlmModel: null })
       } else {
         setLlmSettings({ [config.name]: newValue })
       }
@@ -398,6 +502,10 @@ export default function AdvancedSettingsContent() {
       transcriptionPrompt: null,
       editingPrompt: null,
       noSpeechThreshold: null,
+      polishEnabled: null,
+      polishLlmProvider: null,
+      polishLlmModel: null,
+      polishLlmTemperature: null,
     }
     setLlmSettings(defaultLlmSettings)
     scheduleAdvancedSettingsUpdate(
