@@ -45,8 +45,11 @@ const mockItoStreamController = {
   scheduleConfigUpdate: mock(() => Promise.resolve()),
   scheduleVocabularyUpdate: mock(() => Promise.resolve()),
   getAudioDurationMs: mock(() => 1000),
+  getInteractionAudioBuffer: mock(() => Buffer.from('audio-data')),
+  getCurrentSampleRate: mock(() => 16000),
   endInteraction: mock(),
   cancelTranscription: mock(),
+  clearInteractionAudio: mock(),
 }
 mock.module('./itoStreamController', () => ({
   itoStreamController: mockItoStreamController,
@@ -158,6 +161,10 @@ describe('itoSessionManager', () => {
       sampleRate: 16000,
     })
     mockItoStreamController.getAudioDurationMs.mockReturnValue(1000)
+    mockItoStreamController.getInteractionAudioBuffer.mockReturnValue(
+      Buffer.from('audio-data'),
+    )
+    mockItoStreamController.getCurrentSampleRate.mockReturnValue(16000)
     mockTextInserter.insertText.mockResolvedValue(true)
     mockInteractionManager.getCurrentInteractionId.mockReturnValue(null)
     mockInteractionManager.initialize.mockReturnValue('test-interaction-123')
@@ -434,7 +441,15 @@ describe('itoSessionManager', () => {
     await session.completeSession()
 
     expect(mockItoStreamController.endInteraction).toHaveBeenCalled()
+    expect(mockInteractionManager.createInteraction).toHaveBeenCalledWith(
+      '',
+      Buffer.from('audio-data'),
+      16000,
+      error.message,
+      undefined,
+    )
     expect(mockInteractionManager.clearCurrentInteraction).toHaveBeenCalled()
+    expect(mockItoStreamController.clearInteractionAudio).toHaveBeenCalled()
   })
 
   test('should skip text insertion when no transcript', async () => {

@@ -9,6 +9,7 @@ import { GrammarRulesService } from './grammar/GrammarRulesService'
 import { getAdvancedSettings } from './store'
 import log from 'electron-log'
 import { timingCollector, TimingEventName } from './timing/TimingCollector'
+import { Code } from '@connectrpc/connect'
 
 export class ItoSessionManager {
   private readonly MINIMUM_AUDIO_DURATION_MS = 100
@@ -51,6 +52,12 @@ export class ItoSessionManager {
       } else if (phase === TranscribePhase.PHASE_EDITING) {
         recordingStateNotifier.notifyEditingStarted()
       }
+    })
+    this.streamResponsePromise.catch(error => {
+      console.error(
+        '[itoSessionManager] Stream failed before completion:',
+        error,
+      )
     })
 
     // Begin recording audio (audio bytes will now flow into the gRPC stream)
@@ -312,11 +319,43 @@ export class ItoSessionManager {
       '[itoSessionManager] An unexpected error occurred during transcription:',
       error,
     )
+    const errorDetails = this.getErrorDetails(error)
+    const audioBuffer = itoStreamController.getInteractionAudioBuffer()
+    const sampleRate = itoStreamController.getCurrentSampleRate()
+
+    if (errorDetails.message) {
+      await interactionManager.createInteraction(
+        '',
+        audioBuffer,
+        sampleRate,
+        errorDetails.message,
+        errorDetails.code,
+      )
+    }
     // Clear timing for the interaction on error
     timingCollector.clearInteraction()
 
     // Clear current interaction on error
     interactionManager.clearCurrentInteraction()
+    itoStreamController.clearInteractionAudio()
+  }
+
+  private getErrorDetails(error: unknown): { message: string; code?: string } {
+    if (error instanceof Error) {
+      const rawCode = (error as { code?: unknown }).code
+      if (typeof rawCode === 'number') {
+        return {
+          message: error.message,
+          code: Code[rawCode] ?? String(rawCode),
+        }
+      }
+      if (typeof rawCode === 'string') {
+        return { message: error.message, code: rawCode }
+      }
+      return { message: error.message }
+    }
+
+    return { message: String(error) }
   }
 }
 

@@ -195,6 +195,14 @@ export class ItoStreamController {
     return this.audioStreamManager.getAudioDurationMs()
   }
 
+  public getInteractionAudioBuffer(): Buffer {
+    return this.audioStreamManager.getInteractionAudioBuffer()
+  }
+
+  public getCurrentSampleRate(): number {
+    return this.audioStreamManager.getCurrentSampleRate()
+  }
+
   private stopStreaming() {
     this.audioStreamManager.stopStreaming()
   }
