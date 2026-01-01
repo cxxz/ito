@@ -45,10 +45,10 @@ class GrpcClient {
     // Create HTTP/2 session manager with keepalive configuration
     // This prevents "Too many invalid HTTP/2 frames" errors during long-running streams
     this.sessionManager = new Http2SessionManager(baseUrl, {
-      pingIntervalMs: 30_000, // Send PING every 30 seconds to keep connection alive
+      pingIntervalMs: 10_000, // Send PING every 10 seconds to keep connection alive
       pingIdleConnection: true, // Keep pinging even without active streams
-      pingTimeoutMs: 15_000, // 15 second timeout for PING response
-      idleConnectionTimeoutMs: 300_000, // Close idle connections after 5 minutes
+      pingTimeoutMs: 5_000, // 5 second timeout for PING response
+      idleConnectionTimeoutMs: 60_000, // Close idle connections after 1 minute (prevents stale reuse)
     })
 
     const transport = createConnectTransport({
@@ -59,7 +59,7 @@ class GrpcClient {
 
     console.log('[gRPC Client] Creating client with base URL:', baseUrl)
     console.log(
-      '[gRPC Client] HTTP/2 keepalive enabled: pingInterval=30s, pingTimeout=15s',
+      '[gRPC Client] HTTP/2 keepalive enabled: pingInterval=10s, pingTimeout=5s, idleTimeout=60s',
     )
 
     this.client = createClient(ItoService, transport)
@@ -72,6 +72,53 @@ class GrpcClient {
     const error = this.sessionManager.error()
     const prefix = context ? `[gRPC HTTP/2] ${context}:` : '[gRPC HTTP/2]'
     console.log(prefix, 'Session state:', state, error ? `Error: ${error}` : '')
+  }
+
+  // Check if an error is an HTTP/2 connection error that requires session reset
+  private isHttp2Error(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      return (
+        message.includes('http/2') ||
+        message.includes('http2') ||
+        message.includes('invalid frames') ||
+        message.includes('goaway') ||
+        message.includes('rst_stream') ||
+        message.includes('session')
+      )
+    }
+    return false
+  }
+
+  // Verify connection is healthy before starting a stream
+  // This prevents using stale connections that the server has closed
+  private async ensureHealthyConnection(): Promise<void> {
+    const currentState = this.sessionManager.state()
+    console.log('[gRPC Client] Pre-stream connection check, current state:', currentState)
+
+    // If session is in error state, abort to force fresh connection
+    if (currentState === 'error') {
+      console.log('[gRPC Client] Session in error state, aborting to reset')
+      this.sessionManager.abort()
+    }
+
+    // Explicitly verify connection by calling connect()
+    // This will send a PING if the connection has been idle
+    try {
+      const connectResult = await this.sessionManager.connect()
+      console.log('[gRPC Client] Connection verification result:', connectResult)
+
+      if (connectResult === 'error') {
+        console.log('[gRPC Client] Connection verification returned error, aborting and retrying')
+        this.sessionManager.abort()
+        await this.sessionManager.connect()
+      }
+    } catch (err) {
+      console.log('[gRPC Client] Connection verification failed:', err)
+      this.sessionManager.abort()
+      // Try to establish a fresh connection
+      await this.sessionManager.connect()
+    }
   }
 
   setMainWindow(window: BrowserWindow) {
@@ -114,6 +161,9 @@ class GrpcClient {
     onPhaseUpdate?: (phase: TranscribePhase) => void,
   ): Promise<TranscribeStreamResponse> {
     return this.withRetry(async () => {
+      // Pre-stream connection verification to detect stale connections
+      await this.ensureHealthyConnection()
+
       this.logSessionState('Starting transcribe stream')
 
       const responseStream = this.client.transcribeStream(stream, {
@@ -133,6 +183,11 @@ class GrpcClient {
         }
       } catch (error) {
         this.logSessionState('Stream error occurred')
+        // If we get an HTTP/2 error, abort the session to force a fresh connection next time
+        if (this.isHttp2Error(error)) {
+          console.log('[gRPC Client] HTTP/2 error detected, aborting session to force reconnection')
+          this.sessionManager.abort()
+        }
         throw error
       }
 
