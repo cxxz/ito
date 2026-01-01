@@ -152,7 +152,18 @@ class GrpcClient {
 
   private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
     // Self-hosted mode: no token refresh needed, just execute the operation
-    return await operation()
+    // But we need to handle HTTP/2 connection errors to prevent cascading failures
+    try {
+      return await operation()
+    } catch (error) {
+      // If we get an HTTP/2 error, abort the session to force a fresh connection
+      // This prevents dead connections from persisting and causing repeated failures
+      if (this.isHttp2Error(error)) {
+        console.log('[gRPC Client] HTTP/2 error detected, resetting connection')
+        this.sessionManager.abort()
+      }
+      throw error
+    }
   }
 
   async transcribeStream(
