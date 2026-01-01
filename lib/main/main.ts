@@ -53,6 +53,24 @@ import { createAppTray } from './tray'
 import { initializeAutoUpdater } from './autoUpdaterWrapper'
 import { teardown } from './teardown'
 
+// Handle HTTP/2 session errors gracefully without showing pop-up
+// These errors can occur when the gRPC connection to the server dies unexpectedly
+process.on('uncaughtException', (error: Error) => {
+  // Check if this is an HTTP/2 frame error
+  if (
+    error.message?.includes('ERR_HTTP2_TOO_MANY_INVALID_FRAMES') ||
+    error.message?.includes('Too many invalid HTTP/2 frames')
+  ) {
+    console.log('[Main] HTTP/2 session error caught, resetting gRPC connection')
+    grpcClient.abortSession()
+    return // Don't re-throw, prevents pop-up
+  }
+
+  // For other uncaught exceptions, log and re-throw to preserve default behavior
+  console.error('[Main] Uncaught exception:', error)
+  throw error
+})
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'res',

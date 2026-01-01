@@ -74,6 +74,12 @@ class GrpcClient {
     console.log(prefix, 'Session state:', state, error ? `Error: ${error}` : '')
   }
 
+  // Public method to abort HTTP/2 session from external callers (e.g., uncaught exception handler)
+  abortSession() {
+    console.log('[gRPC Client] External abort requested, resetting HTTP/2 session')
+    this.sessionManager.abort()
+  }
+
   // Check if an error is an HTTP/2 connection error that requires session reset
   private isHttp2Error(error: unknown): boolean {
     if (error instanceof Error) {
@@ -96,28 +102,33 @@ class GrpcClient {
     const currentState = this.sessionManager.state()
     console.log('[gRPC Client] Pre-stream connection check, current state:', currentState)
 
-    // If session is in error state, abort to force fresh connection
-    if (currentState === 'error') {
-      console.log('[gRPC Client] Session in error state, aborting to reset')
+    // For streaming operations, don't trust idle connections - they may be stale
+    // The server may have closed the connection without our knowledge (GOAWAY, timeout, etc.)
+    // Force a fresh connection to ensure reliability for long-running streams
+    if (currentState === 'error' || currentState === 'idle') {
+      console.log(
+        `[gRPC Client] Session in ${currentState} state, forcing fresh connection for stream`,
+      )
       this.sessionManager.abort()
     }
 
-    // Explicitly verify connection by calling connect()
-    // This will send a PING if the connection has been idle
+    // Establish a fresh connection
     try {
       const connectResult = await this.sessionManager.connect()
-      console.log('[gRPC Client] Connection verification result:', connectResult)
+      console.log('[gRPC Client] Fresh connection established, state:', connectResult)
 
       if (connectResult === 'error') {
-        console.log('[gRPC Client] Connection verification returned error, aborting and retrying')
+        console.log('[gRPC Client] Connection failed, retrying...')
         this.sessionManager.abort()
-        await this.sessionManager.connect()
+        const retryResult = await this.sessionManager.connect()
+        console.log('[gRPC Client] Retry result:', retryResult)
+        if (retryResult === 'error') {
+          throw new Error('Failed to establish gRPC connection after retry')
+        }
       }
     } catch (err) {
-      console.log('[gRPC Client] Connection verification failed:', err)
-      this.sessionManager.abort()
-      // Try to establish a fresh connection
-      await this.sessionManager.connect()
+      console.log('[gRPC Client] Connection establishment failed:', err)
+      throw err
     }
   }
 
@@ -150,17 +161,28 @@ class GrpcClient {
     return new Headers()
   }
 
-  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    options?: { retryOnHttp2Error?: boolean },
+  ): Promise<T> {
     // Self-hosted mode: no token refresh needed, just execute the operation
     // But we need to handle HTTP/2 connection errors to prevent cascading failures
+    const { retryOnHttp2Error = true } = options ?? {}
+
     try {
       return await operation()
     } catch (error) {
       // If we get an HTTP/2 error, abort the session to force a fresh connection
-      // This prevents dead connections from persisting and causing repeated failures
       if (this.isHttp2Error(error)) {
         console.log('[gRPC Client] HTTP/2 error detected, resetting connection')
         this.sessionManager.abort()
+
+        // Retry once with fresh connection (for unary calls only)
+        // This prevents pop-ups for transient connection issues
+        if (retryOnHttp2Error) {
+          console.log('[gRPC Client] Retrying with fresh connection...')
+          return await operation()
+        }
       }
       throw error
     }
@@ -171,6 +193,7 @@ class GrpcClient {
     signal?: AbortSignal,
     onPhaseUpdate?: (phase: TranscribePhase) => void,
   ): Promise<TranscribeStreamResponse> {
+    // Disable retry for streaming - the input stream can only be consumed once
     return this.withRetry(async () => {
       // Pre-stream connection verification to detect stale connections
       await this.ensureHealthyConnection()
@@ -208,7 +231,7 @@ class GrpcClient {
         throw new Error('No final response received from transcription stream')
       }
       return finalResponse
-    })
+    }, { retryOnHttp2Error: false })
   }
 
   // =================================================================
