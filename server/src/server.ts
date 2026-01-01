@@ -21,7 +21,20 @@ export const startServer = async () => {
     // This avoids a Fastify bug where session close handlers have incorrect `this` binding
     // causing "TypeError: this.close is not a function" errors after stream completion.
     serverFactory: handler => {
-      return http2.createServer(handler)
+      return http2.createServer(
+        {
+          // Increase tolerance for invalid frames (default: 1000)
+          // This prevents "Too many invalid HTTP/2 frames" errors during long-running streams
+          maxSessionInvalidFrames: 2000,
+          // Allow more memory per session for large audio streams (default: 10 MB)
+          maxSessionMemory: 64, // 64 MB
+          // Larger initial window for better throughput with audio data
+          settings: {
+            initialWindowSize: 1024 * 1024, // 1 MB (default: 64 KB)
+          },
+        },
+        handler,
+      )
     },
   })
 

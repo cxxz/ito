@@ -27,7 +27,7 @@ import {
   TranscribePhase,
 } from '@/app/generated/ito_pb'
 import { createClient } from '@connectrpc/connect'
-import { createConnectTransport } from '@connectrpc/connect-node'
+import { createConnectTransport, Http2SessionManager } from '@connectrpc/connect-node'
 import { BrowserWindow } from 'electron'
 import { create } from '@bufbuild/protobuf'
 import { Note, Interaction, DictionaryItem } from '../main/sqlite/models'
@@ -37,19 +37,41 @@ class GrpcClient {
   private client: ReturnType<typeof createClient<typeof ItoService>>
   private timingClient: ReturnType<typeof createClient<typeof TimingService>>
   private mainWindow: BrowserWindow | null = null
+  private sessionManager: Http2SessionManager
 
   constructor() {
-    const transport = createConnectTransport({
-      baseUrl: import.meta.env.VITE_GRPC_BASE_URL,
-      // Use HTTP/2 for bidirectional streaming support (required for TranscribeStream phase updates)
-      httpVersion: '2',
+    const baseUrl = import.meta.env.VITE_GRPC_BASE_URL
+
+    // Create HTTP/2 session manager with keepalive configuration
+    // This prevents "Too many invalid HTTP/2 frames" errors during long-running streams
+    this.sessionManager = new Http2SessionManager(baseUrl, {
+      pingIntervalMs: 30_000, // Send PING every 30 seconds to keep connection alive
+      pingIdleConnection: true, // Keep pinging even without active streams
+      pingTimeoutMs: 15_000, // 15 second timeout for PING response
+      idleConnectionTimeoutMs: 300_000, // Close idle connections after 5 minutes
     })
+
+    const transport = createConnectTransport({
+      baseUrl,
+      httpVersion: '2',
+      sessionManager: this.sessionManager,
+    })
+
+    console.log('[gRPC Client] Creating client with base URL:', baseUrl)
     console.log(
-      'Creating gRPC client with base URL:',
-      import.meta.env.VITE_GRPC_BASE_URL,
+      '[gRPC Client] HTTP/2 keepalive enabled: pingInterval=30s, pingTimeout=15s',
     )
+
     this.client = createClient(ItoService, transport)
     this.timingClient = createClient(TimingService, transport)
+  }
+
+  // Log current HTTP/2 session state for diagnostics
+  logSessionState(context?: string) {
+    const state = this.sessionManager.state()
+    const error = this.sessionManager.error()
+    const prefix = context ? `[gRPC HTTP/2] ${context}:` : '[gRPC HTTP/2]'
+    console.log(prefix, 'Session state:', state, error ? `Error: ${error}` : '')
   }
 
   setMainWindow(window: BrowserWindow) {
@@ -92,20 +114,29 @@ class GrpcClient {
     onPhaseUpdate?: (phase: TranscribePhase) => void,
   ): Promise<TranscribeStreamResponse> {
     return this.withRetry(async () => {
+      this.logSessionState('Starting transcribe stream')
+
       const responseStream = this.client.transcribeStream(stream, {
         headers: this.getHeaders(),
         signal,
       })
 
       let finalResponse: TranscribeStreamResponse | null = null
-      for await (const response of responseStream) {
-        if (onPhaseUpdate) {
-          onPhaseUpdate(response.phase)
+      try {
+        for await (const response of responseStream) {
+          if (onPhaseUpdate) {
+            onPhaseUpdate(response.phase)
+          }
+          if (response.phase === TranscribePhase.PHASE_COMPLETE) {
+            finalResponse = response
+          }
         }
-        if (response.phase === TranscribePhase.PHASE_COMPLETE) {
-          finalResponse = response
-        }
+      } catch (error) {
+        this.logSessionState('Stream error occurred')
+        throw error
       }
+
+      this.logSessionState('Stream completed')
 
       if (!finalResponse) {
         throw new Error('No final response received from transcription stream')

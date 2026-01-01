@@ -8,6 +8,7 @@ import {
   Check,
   Download,
   Trash,
+  Refresh,
   DangerTriangle,
 } from '@mynaui/icons-react'
 import { EXTERNAL_LINKS } from '@/lib/constants/external-links'
@@ -72,6 +73,9 @@ export default function HomeContent() {
   >(new Map())
   const [copiedItems, setCopiedItems] = useState<Set<string>>(new Set())
   const [openTooltipKey, setOpenTooltipKey] = useState<string | null>(null)
+  const [retranscribingIds, setRetranscribingIds] = useState<Set<string>>(
+    new Set(),
+  )
   const [isClearingAll, setIsClearingAll] = useState(false)
   const [stats, setStats] = useState<InteractionStats>({
     streakDays: 0,
@@ -514,6 +518,29 @@ export default function HomeContent() {
     }
   }
 
+  const handleRetranscribe = async (interaction: Interaction) => {
+    if (!interaction.raw_audio) {
+      console.warn('No audio data available for this interaction')
+      return
+    }
+
+    setRetranscribingIds(prev => new Set(prev).add(interaction.id))
+    try {
+      const result = await window.api.interactions.retranscribe(interaction.id)
+      if (result?.error) {
+        console.error('ReTranscribe failed:', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to ReTranscribe interaction:', error)
+    } finally {
+      setRetranscribingIds(prev => {
+        const next = new Set(prev)
+        next.delete(interaction.id)
+        return next
+      })
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col">
       {/* Fixed Header Content */}
@@ -640,6 +667,9 @@ export default function HomeContent() {
                 <div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-200">
                   {dateInteractions.map(interaction => {
                     const displayInfo = getDisplayText(interaction)
+                    const isRetranscribing = retranscribingIds.has(
+                      interaction.id,
+                    )
 
                     return (
                       <div
@@ -756,6 +786,42 @@ export default function HomeContent() {
                               </TooltipTrigger>
                               <TooltipContent side="top" sideOffset={5}>
                                 Download audio
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {interaction.raw_audio && (
+                            <Tooltip
+                              open={
+                                openTooltipKey ===
+                                `retranscribe:${interaction.id}`
+                              }
+                              onOpenChange={open => {
+                                setOpenTooltipKey(
+                                  open ? `retranscribe:${interaction.id}` : null,
+                                )
+                              }}
+                            >
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600 disabled:opacity-50"
+                                  onClick={() =>
+                                    handleRetranscribe(interaction)
+                                  }
+                                  disabled={isRetranscribing || isClearingAll}
+                                  aria-label="ReTranscribe"
+                                >
+                                  <Refresh
+                                    className={`w-4 h-4 ${
+                                      isRetranscribing ? 'animate-spin' : ''
+                                    }`}
+                                  />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={5}>
+                                {isRetranscribing
+                                  ? 'Retranscribing...'
+                                  : 'ReTranscribe'}
                               </TooltipContent>
                             </Tooltip>
                           )}

@@ -120,7 +120,8 @@ const api = {
   interactions: {
     getAll: () => ipcRenderer.invoke('interactions:get-all'),
     getById: (id: string) => ipcRenderer.invoke('interactions:get-by-id', id),
-
+    retranscribe: (id: string) =>
+      ipcRenderer.invoke('interactions:retranscribe', id),
     delete: (id: string) => ipcRenderer.invoke('interactions:delete', id),
   },
   openMailto: (email: string) => ipcRenderer.invoke('open-mailto', email),

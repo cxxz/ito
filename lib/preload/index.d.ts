@@ -80,6 +80,10 @@ declare global {
       interactions: {
         getAll: () => Promise<any[]>
         getById: (id: string) => Promise<any>
+        retranscribe: (id: string) => Promise<{
+          interactionId: string
+          error?: string
+        }>
         delete: (id: string) => Promise<void>
       }
       loginItem: {

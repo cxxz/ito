@@ -28,6 +28,7 @@ import {
 import { audioRecorderService } from '../media/audio'
 import { voiceInputService } from '../main/voiceInputService'
 import { itoSessionManager } from '../main/itoSessionManager'
+import { retranscribeInteraction } from '../main/interactions/retranscribeInteraction'
 import { ItoMode } from '@/app/generated/ito_pb'
 import {
   getSelectedText,
@@ -336,6 +337,10 @@ export function registerIPC() {
   })
   handleIPC('interactions:get-by-id', async (_e, id) =>
     InteractionsTable.findById(id),
+  )
+
+  handleIPC('interactions:retranscribe', async (_e, id) =>
+    retranscribeInteraction(id),
   )
 
   handleIPC('interactions:delete', async (_e, id) => {
