@@ -5,6 +5,30 @@ import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
 import { BrowserWindow } from 'electron'
 import { timingCollector } from '../timing/TimingCollector'
+import { grpcClient } from '../../clients/grpcClient'
+import { ItoMode } from '@/app/generated/ito_pb'
+
+const parseJsonField = (value: string | undefined) => {
+  if (!value) {
+    return null
+  }
+
+  try {
+    let parsed = JSON.parse(value)
+    if (typeof parsed === 'string') {
+      parsed = JSON.parse(parsed)
+    }
+    return parsed
+  } catch (error) {
+    console.error('[InteractionManager] Failed to parse JSON field:', error)
+    return null
+  }
+}
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+const MAX_INTERACTION_FETCH_ATTEMPTS = 3
+const INTERACTION_FETCH_RETRY_DELAY_MS = 150
 
 export class InteractionManager {
   private currentInteractionId: string | null = null
@@ -103,6 +127,171 @@ export class InteractionManager {
       if (this.currentInteractionId) {
         timingCollector.clearInteraction(this.currentInteractionId)
       }
+    }
+  }
+
+  private async fetchInteractionFromServer(interactionId: string) {
+    for (let attempt = 0; attempt < MAX_INTERACTION_FETCH_ATTEMPTS; attempt++) {
+      try {
+        return await grpcClient.getInteraction(interactionId)
+      } catch (error) {
+        const isLastAttempt = attempt === MAX_INTERACTION_FETCH_ATTEMPTS - 1
+        console.warn(
+          `[InteractionManager] Failed to fetch interaction ${interactionId} (attempt ${attempt + 1}/${MAX_INTERACTION_FETCH_ATTEMPTS})`,
+          error,
+        )
+        if (isLastAttempt) {
+          break
+        }
+        await delay(INTERACTION_FETCH_RETRY_DELAY_MS * (attempt + 1))
+      }
+    }
+
+    return null
+  }
+
+  async upsertInteractionFromServer(params: {
+    interactionId?: string
+    responseTranscript: string
+    audioBuffer: Buffer
+    sampleRate: number
+    durationMs?: number
+    mode: ItoMode
+  }) {
+    const interactionId = params.interactionId ?? this.currentInteractionId
+    if (!interactionId) {
+      console.warn(
+        '[InteractionManager] No interaction ID, skipping server sync.',
+      )
+      return
+    }
+
+    try {
+      const userProfile = mainStore.get(STORE_KEYS.USER_PROFILE) as any
+      const userId = userProfile?.id || 'self-hosted'
+      const now = new Date().toISOString()
+      const interactionEndTime = Date.now()
+      const durationMs =
+        params.durationMs ??
+        (this.interactionStartTime
+          ? interactionEndTime - this.interactionStartTime
+          : 0)
+
+      const serverInteraction =
+        await this.fetchInteractionFromServer(interactionId)
+
+      if (!serverInteraction) {
+        console.warn(
+          `[InteractionManager] Falling back to local interaction data for ${interactionId}`,
+        )
+        await InteractionsTable.upsert({
+          id: interactionId,
+          user_id: userId,
+          title:
+            params.responseTranscript.length > 50
+              ? params.responseTranscript.substring(0, 50) + '...'
+              : params.responseTranscript || 'Voice interaction',
+          asr_output: {
+            transcript: params.responseTranscript,
+            totalAudioBytes: params.audioBuffer.length,
+            error: null,
+            errorCode: null,
+            timestamp: now,
+            durationMs,
+          },
+          llm_output: {},
+          raw_audio: params.audioBuffer.length > 0 ? params.audioBuffer : null,
+          raw_audio_id: null,
+          duration_ms: durationMs,
+          sample_rate: params.sampleRate,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+        })
+
+        BrowserWindow.getAllWindows().forEach(window => {
+          window.webContents.send('interaction-created', {
+            id: interactionId,
+            transcript: params.responseTranscript,
+            timestamp: now,
+            durationMs,
+          })
+        })
+        return
+      }
+
+      const parsedAsrOutput = parseJsonField(serverInteraction.asrOutput) || {}
+      let parsedLlmOutput = parseJsonField(serverInteraction.llmOutput)
+      let rawTranscript =
+        typeof parsedAsrOutput?.transcript === 'string'
+          ? parsedAsrOutput.transcript
+          : ''
+
+      if (!rawTranscript && params.responseTranscript) {
+        console.warn(
+          `[InteractionManager] Missing ASR transcript for ${interactionId}, falling back to response transcript.`,
+        )
+        rawTranscript = params.responseTranscript
+        parsedAsrOutput.transcript = rawTranscript
+      }
+
+      if (params.mode === ItoMode.EDIT) {
+        parsedLlmOutput = null
+      } else if (params.mode === ItoMode.TRANSCRIBE) {
+        const hasPolished =
+          typeof parsedLlmOutput?.polishedTranscript === 'string' &&
+          parsedLlmOutput.polishedTranscript.trim().length > 0
+        const trimmedResponse = params.responseTranscript.trim()
+        const trimmedRaw = rawTranscript.trim()
+
+        if (!hasPolished && trimmedResponse && trimmedRaw !== trimmedResponse) {
+          parsedLlmOutput = {
+            ...(parsedLlmOutput || {}),
+            polishedTranscript: params.responseTranscript,
+            mode: 'TRANSCRIBE_POLISH',
+            timestamp: now,
+          }
+        }
+      }
+
+      const title =
+        rawTranscript && rawTranscript.length > 50
+          ? rawTranscript.substring(0, 50) + '...'
+          : rawTranscript || 'Voice interaction'
+
+      await InteractionsTable.upsert({
+        id: interactionId,
+        user_id: serverInteraction.userId || userId,
+        title,
+        asr_output: {
+          ...parsedAsrOutput,
+          totalAudioBytes:
+            parsedAsrOutput?.totalAudioBytes ?? params.audioBuffer.length,
+        },
+        llm_output: parsedLlmOutput ?? null,
+        raw_audio: params.audioBuffer.length > 0 ? params.audioBuffer : null,
+        raw_audio_id: null,
+        duration_ms: durationMs,
+        sample_rate: params.sampleRate,
+        created_at: serverInteraction.createdAt || now,
+        updated_at: serverInteraction.updatedAt || now,
+        deleted_at: serverInteraction.deletedAt || null,
+      })
+
+      BrowserWindow.getAllWindows().forEach(window => {
+        window.webContents.send('interaction-created', {
+          id: interactionId,
+          transcript: rawTranscript,
+          timestamp: serverInteraction.createdAt || now,
+          durationMs,
+        })
+      })
+    } catch (error) {
+      console.error(
+        '[InteractionManager] Failed to upsert interaction from server:',
+        error,
+      )
+      timingCollector.clearInteraction(interactionId)
     }
   }
 

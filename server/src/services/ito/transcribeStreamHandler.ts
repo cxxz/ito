@@ -174,13 +174,11 @@ export class TranscribeStreamHandler {
           // Generate interaction ID if not provided by client
           const finalInteractionId = interactionId || uuidv4()
 
-          // Generate a meaningful title from the transcript
-          const displayTranscript =
-            mode === ItoMode.EDIT ? transcript : originalTranscript
+          // Generate a meaningful title from the raw ASR transcript
           const title =
-            displayTranscript && displayTranscript.length > 50
-              ? displayTranscript.substring(0, 50) + '...'
-              : displayTranscript || 'Voice interaction'
+            originalTranscript && originalTranscript.length > 50
+              ? originalTranscript.substring(0, 50) + '...'
+              : originalTranscript || 'Voice interaction'
 
           // Create ASR output object
           const asrOutput = JSON.stringify({
@@ -190,25 +188,29 @@ export class TranscribeStreamHandler {
           })
 
           // Create LLM output object
-          // - For EDIT mode: store adjusted transcript if changed
+          // - For TRANSCRIBE with polish success: store polished transcript
           // - For TRANSCRIBE with polish error: store the error details
-          const llmOutput =
-            mode === ItoMode.EDIT && transcript !== originalTranscript
-              ? JSON.stringify({
-                  adjustedTranscript: transcript,
-                  mode: 'EDIT',
-                  timestamp: new Date().toISOString(),
-                })
-              : polishError
-                ? JSON.stringify({
-                    error: polishError.message,
-                    errorCode: 'POLISH_LLM_FAILED',
-                    provider: polishError.provider,
-                    model: polishError.model,
-                    mode: 'TRANSCRIBE_POLISH',
-                    timestamp: new Date().toISOString(),
-                  })
-                : null
+          let llmOutput: string | null = null
+          if (mode === ItoMode.TRANSCRIBE && advancedSettings.polishEnabled) {
+            if (polishError) {
+              llmOutput = JSON.stringify({
+                error: polishError.message,
+                errorCode: 'POLISH_LLM_FAILED',
+                provider: polishError.provider,
+                model: polishError.model,
+                mode: 'TRANSCRIBE_POLISH',
+                timestamp: new Date().toISOString(),
+              })
+            } else if (transcript !== originalTranscript) {
+              llmOutput = JSON.stringify({
+                polishedTranscript: transcript,
+                mode: 'TRANSCRIBE_POLISH',
+                provider: advancedSettings.polishLlmProvider,
+                model: advancedSettings.polishLlmModel,
+                timestamp: new Date().toISOString(),
+              })
+            }
+          }
 
           // Use shared helper to create interaction
           await createInteractionWithAudio({

@@ -69,6 +69,7 @@ const mockInteractionManager = {
   adoptInteractionId: mock(),
   initialize: mock(() => 'test-interaction-123'),
   createInteraction: mock(() => Promise.resolve()),
+  upsertInteractionFromServer: mock(() => Promise.resolve()),
   clearCurrentInteraction: mock(),
 }
 mock.module('./interactions/InteractionManager', () => ({
@@ -333,11 +334,13 @@ describe('itoSessionManager', () => {
     await session.completeSession()
 
     expect(mockTextInserter.insertText).toHaveBeenCalledWith(mockTranscript)
-    expect(mockInteractionManager.createInteraction).toHaveBeenCalledWith(
-      mockTranscript,
-      Buffer.from('audio-data'),
-      16000,
-      undefined,
+    expect(mockInteractionManager.upsertInteractionFromServer).toHaveBeenCalledWith(
+      {
+        responseTranscript: mockTranscript,
+        audioBuffer: Buffer.from('audio-data'),
+        sampleRate: 16000,
+        mode: ItoMode.TRANSCRIBE,
+      },
     )
     expect(mockItoStreamController.endInteraction).toHaveBeenCalled()
     expect(mockInteractionManager.clearCurrentInteraction).toHaveBeenCalled()

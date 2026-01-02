@@ -295,12 +295,12 @@ export class ItoSessionManager {
         this.textInserter.insertText(textToInsert)
 
         // Create interaction in database
-        await interactionManager.createInteraction(
-          response.transcript,
+        await interactionManager.upsertInteractionFromServer({
+          responseTranscript: response.transcript,
           audioBuffer,
           sampleRate,
-          errorMessage,
-        )
+          mode: itoStreamController.getCurrentMode(),
+        })
       } else {
         log.warn('[itoSessionManager] Skipping text insertion:', {
           hasTranscript: !!response.transcript,

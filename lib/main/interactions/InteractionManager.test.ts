@@ -41,6 +41,13 @@ mock.module('electron-log', () => ({
   },
 }))
 
+const mockGrpcClient = {
+  getInteraction: mock(() => Promise.resolve(null)),
+}
+mock.module('../../clients/grpcClient', () => ({
+  grpcClient: mockGrpcClient,
+}))
+
 import { InteractionManager } from './InteractionManager'
 import { STORE_KEYS } from '../../constants/store-keys'
 

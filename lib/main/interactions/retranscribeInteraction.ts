@@ -15,6 +15,7 @@ import mainStore, { getAdvancedSettings } from '../store'
 import { STORE_KEYS } from '../../constants/store-keys'
 import { contextGrabber, ContextData } from '../context/ContextGrabber'
 import { grpcClient } from '../../clients/grpcClient'
+import { interactionManager } from './InteractionManager'
 import { Code } from '@connectrpc/connect'
 
 const AUDIO_CHUNK_SIZE_BYTES = 3200
@@ -245,14 +246,26 @@ export const retranscribeInteraction = async (
     return { interactionId, error: message }
   }
 
-  await createInteractionRecord({
-    transcript: response.transcript || '',
+  if (response.error) {
+    await createInteractionRecord({
+      transcript: response.transcript || '',
+      audioBuffer: interaction.raw_audio,
+      sampleRate,
+      durationMs,
+      errorMessage: response.error.message,
+      errorCode: response.error.code,
+      interactionId,
+    })
+    return { interactionId, error: response.error.message }
+  }
+
+  await interactionManager.upsertInteractionFromServer({
+    interactionId,
+    responseTranscript: response.transcript || '',
     audioBuffer: interaction.raw_audio,
     sampleRate,
     durationMs,
-    errorMessage: response.error?.message,
-    errorCode: response.error?.code,
-    interactionId,
+    mode: ItoMode.TRANSCRIBE,
   })
 
   return {

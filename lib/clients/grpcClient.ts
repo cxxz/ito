@@ -11,6 +11,7 @@ import {
   DeleteNoteRequestSchema,
   ListNotesRequestSchema,
   CreateInteractionRequestSchema,
+  GetInteractionRequestSchema,
   UpdateInteractionRequestSchema,
   DeleteInteractionRequestSchema,
   ListInteractionsRequestSchema,
@@ -336,6 +337,17 @@ class GrpcClient {
       )
 
       return await this.client.createInteraction(request, {
+        headers: this.getHeaders(),
+      })
+    })
+  }
+
+  async getInteraction(interactionId: string): Promise<InteractionPb> {
+    return this.withRetry(async () => {
+      const request = create(GetInteractionRequestSchema, {
+        id: interactionId,
+      })
+      return await this.client.getInteraction(request, {
         headers: this.getHeaders(),
       })
     })

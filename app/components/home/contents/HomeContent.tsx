@@ -79,6 +79,9 @@ export default function HomeContent() {
   const [retranscribingIds, setRetranscribingIds] = useState<Set<string>>(
     new Set(),
   )
+  const [expandedInteractionIds, setExpandedInteractionIds] = useState<
+    Set<string>
+  >(new Set())
   const [isClearingAll, setIsClearingAll] = useState(false)
   const [stats, setStats] = useState<InteractionStats>({
     streakDays: 0,
@@ -352,6 +355,18 @@ export default function HomeContent() {
     setStats(calculateAllStats(nextInteractions))
   }
 
+  const toggleExpandedInteraction = (interactionId: string) => {
+    setExpandedInteractionIds(prev => {
+      const next = new Set(prev)
+      if (next.has(interactionId)) {
+        next.delete(interactionId)
+      } else {
+        next.add(interactionId)
+      }
+      return next
+    })
+  }
+
   const cleanupAudioInstance = (interactionId: string) => {
     const audio = audioInstances.get(interactionId)
     if (audio) {
@@ -421,6 +436,14 @@ export default function HomeContent() {
     setOpenTooltipKey(prev =>
       prev?.endsWith(`:${interaction.id}`) ? null : prev,
     )
+    setExpandedInteractionIds(prev => {
+      if (!prev.has(interaction.id)) {
+        return prev
+      }
+      const next = new Set(prev)
+      next.delete(interaction.id)
+      return next
+    })
 
     try {
       await window.api.interactions.delete(interaction.id)
@@ -457,6 +480,7 @@ export default function HomeContent() {
     setIsClearingAll(true)
     setOpenTooltipKey(null)
     setCopiedItems(new Set())
+    setExpandedInteractionIds(new Set())
     cleanupAllAudioInstances()
 
     try {
@@ -699,254 +723,345 @@ export default function HomeContent() {
                     const isRetranscribing = retranscribingIds.has(
                       interaction.id,
                     )
+                    const polishedTranscript =
+                      interaction.llm_output?.polishedTranscript
+                    const polishedText =
+                      typeof polishedTranscript === 'string'
+                        ? polishedTranscript
+                        : ''
+                    const hasPolishedText = polishedText.trim().length > 0
+                    const isExpandable =
+                      !displayInfo.isError && hasPolishedText
+                    const isExpanded =
+                      isExpandable &&
+                      expandedInteractionIds.has(interaction.id)
+                    const polishedCopyKey = `polished:${interaction.id}`
 
                     return (
-                      <div
-                        key={interaction.id}
-                        className="flex items-center justify-between px-4 py-4 gap-10 hover:bg-gray-50 transition-colors duration-200 group"
-                      >
-                        <div className="flex items-center gap-10">
-                          <div className="text-gray-600 min-w-[60px]">
-                            {formatTime(interaction.created_at)}
-                          </div>
-                          <div
-                            className={`${displayInfo.isError ? 'text-gray-600' : 'text-gray-900'} flex items-center gap-1`}
-                          >
-                            {displayInfo.text}
-                            {displayInfo.tooltip && (
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <InfoCircle className="w-4 h-4 text-gray-400" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {displayInfo.tooltip}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            {getPolishError(interaction) && (
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <DangerTriangle className="w-4 h-4 text-amber-500" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Polish failed:{' '}
-                                  {getPolishError(interaction)?.message}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Copy, Download, and Play buttons - only show on hover or when playing */}
-                        <div
-                          className={`flex items-center gap-2 ${playingAudio === interaction.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-200`}
-                        >
-                          {/* Copy button */}
-                          {!displayInfo.isError && (
-                            <Tooltip
-                              open={openTooltipKey === `copy:${interaction.id}`}
-                              onOpenChange={open => {
-                                if (open) {
-                                  // Opening: exclusively show this tooltip
-                                  setOpenTooltipKey(`copy:${interaction.id}`)
-                                } else {
-                                  // Closing: if in copied state, keep it open until timer clears,
-                                  // otherwise close normally
-                                  if (!copiedItems.has(interaction.id)) {
-                                    setOpenTooltipKey(prev =>
-                                      prev === `copy:${interaction.id}`
-                                        ? null
-                                        : prev,
-                                    )
-                                  }
+                      <div key={interaction.id}>
+                        <div className="flex items-center justify-between px-4 py-4 gap-10 hover:bg-gray-50 transition-colors duration-200 group">
+                          <div className="flex items-center gap-10">
+                            <div className="text-gray-600 min-w-[60px]">
+                              {formatTime(interaction.created_at)}
+                            </div>
+                            <div
+                              className={`${displayInfo.isError ? 'text-gray-600' : 'text-gray-900'} flex items-center gap-1`}
+                            >
+                              <button
+                                type="button"
+                                className={`bg-transparent p-0 text-left ${isExpandable ? 'cursor-pointer hover:underline' : 'cursor-default'} disabled:opacity-100`}
+                                onClick={() =>
+                                  isExpandable &&
+                                  toggleExpandedInteraction(interaction.id)
                                 }
+                                disabled={!isExpandable}
+                                aria-expanded={
+                                  isExpandable ? isExpanded : undefined
+                                }
+                              >
+                                {displayInfo.text}
+                              </button>
+                              {displayInfo.tooltip && (
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <InfoCircle className="w-4 h-4 text-gray-400" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {displayInfo.tooltip}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                              {getPolishError(interaction) && (
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <DangerTriangle className="w-4 h-4 text-amber-500" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Polish failed:{' '}
+                                    {getPolishError(interaction)?.message}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Copy, Download, and Play buttons - only show on hover or when playing */}
+                          <div
+                            className={`flex items-center gap-2 ${playingAudio === interaction.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-200`}
+                          >
+                            {/* Copy button */}
+                            {!displayInfo.isError && (
+                              <Tooltip
+                                open={
+                                  openTooltipKey === `copy:${interaction.id}`
+                                }
+                                onOpenChange={open => {
+                                  if (open) {
+                                    // Opening: exclusively show this tooltip
+                                    setOpenTooltipKey(`copy:${interaction.id}`)
+                                  } else {
+                                    // Closing: if in copied state, keep it open until timer clears,
+                                    // otherwise close normally
+                                    if (!copiedItems.has(interaction.id)) {
+                                      setOpenTooltipKey(prev =>
+                                        prev === `copy:${interaction.id}`
+                                          ? null
+                                          : prev,
+                                      )
+                                    }
+                                  }
+                                }}
+                              >
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className={`p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer ${
+                                      copiedItems.has(interaction.id)
+                                        ? 'text-green-600'
+                                        : 'text-gray-600'
+                                    }`}
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        displayInfo.text,
+                                        interaction.id,
+                                      )
+                                    }
+                                  >
+                                    {copiedItems.has(interaction.id) ? (
+                                      <Check className="w-4 h-4" />
+                                    ) : (
+                                      <Copy className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={5}>
+                                  {copiedItems.has(interaction.id)
+                                    ? 'Copied 🎉'
+                                    : 'Copy'}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+
+                            {/* Download button */}
+                            {interaction.raw_audio && (
+                              <Tooltip
+                                open={
+                                  openTooltipKey ===
+                                  `download:${interaction.id}`
+                                }
+                                onOpenChange={open => {
+                                  setOpenTooltipKey(
+                                    open ? `download:${interaction.id}` : null,
+                                  )
+                                }}
+                              >
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600"
+                                    onClick={() =>
+                                      handleAudioDownload(interaction)
+                                    }
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={5}>
+                                  Download audio
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+
+                            {interaction.raw_audio && (
+                              <Tooltip
+                                open={
+                                  openTooltipKey ===
+                                  `retranscribe:${interaction.id}`
+                                }
+                                onOpenChange={open => {
+                                  setOpenTooltipKey(
+                                    open
+                                      ? `retranscribe:${interaction.id}`
+                                      : null,
+                                  )
+                                }}
+                              >
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600 disabled:opacity-50"
+                                    onClick={() =>
+                                      handleRetranscribe(interaction)
+                                    }
+                                    disabled={isRetranscribing || isClearingAll}
+                                    aria-label="ReTranscribe"
+                                  >
+                                    <Refresh
+                                      className={`w-4 h-4 ${
+                                        isRetranscribing ? 'animate-spin' : ''
+                                      }`}
+                                    />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={5}>
+                                  {isRetranscribing
+                                    ? 'Retranscribing...'
+                                    : 'ReTranscribe'}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+
+                            {/* Send to Playground button */}
+                            {interaction.raw_audio && (
+                              <Tooltip
+                                open={
+                                  openTooltipKey ===
+                                  `playground:${interaction.id}`
+                                }
+                                onOpenChange={open => {
+                                  setOpenTooltipKey(
+                                    open ? `playground:${interaction.id}` : null,
+                                  )
+                                }}
+                              >
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600"
+                                    onClick={() =>
+                                      handleSendToPlayground(interaction)
+                                    }
+                                    disabled={isClearingAll}
+                                    aria-label="Send to Playground"
+                                  >
+                                    <Flask className="w-4 h-4" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={5}>
+                                  Send to Playground
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+
+                            {/* Play/Stop button with tooltip */}
+                            <Tooltip
+                              open={openTooltipKey === `play:${interaction.id}`}
+                              onOpenChange={open => {
+                                setOpenTooltipKey(
+                                  open ? `play:${interaction.id}` : null,
+                                )
                               }}
                             >
                               <TooltipTrigger asChild>
                                 <button
                                   className={`p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer ${
-                                    copiedItems.has(interaction.id)
-                                      ? 'text-green-600'
+                                    playingAudio === interaction.id
+                                      ? 'bg-blue-50 text-blue-600'
                                       : 'text-gray-600'
                                   }`}
                                   onClick={() =>
-                                    copyToClipboard(
-                                      displayInfo.text,
-                                      interaction.id,
-                                    )
+                                    handleAudioPlayStop(interaction)
                                   }
+                                  disabled={!interaction.raw_audio}
                                 >
-                                  {copiedItems.has(interaction.id) ? (
-                                    <Check className="w-4 h-4" />
+                                  {playingAudio === interaction.id ? (
+                                    <Stop className="w-4 h-4" />
                                   ) : (
-                                    <Copy className="w-4 h-4" />
+                                    <Play className="w-4 h-4" />
                                   )}
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="top" sideOffset={5}>
-                                {copiedItems.has(interaction.id)
-                                  ? 'Copied 🎉'
-                                  : 'Copy'}
+                                {!interaction.raw_audio
+                                  ? 'No audio available'
+                                  : playingAudio === interaction.id
+                                    ? 'Stop'
+                                    : 'Play'}
                               </TooltipContent>
                             </Tooltip>
-                          )}
 
-                          {/* Download button */}
-                          {interaction.raw_audio && (
                             <Tooltip
                               open={
-                                openTooltipKey === `download:${interaction.id}`
+                                openTooltipKey === `delete:${interaction.id}`
                               }
                               onOpenChange={open => {
                                 setOpenTooltipKey(
-                                  open ? `download:${interaction.id}` : null,
+                                  open ? `delete:${interaction.id}` : null,
                                 )
                               }}
                             >
                               <TooltipTrigger asChild>
                                 <button
-                                  className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600"
+                                  className="p-1.5 hover:bg-red-50 rounded transition-colors cursor-pointer text-gray-600 hover:text-red-600"
                                   onClick={() =>
-                                    handleAudioDownload(interaction)
-                                  }
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" sideOffset={5}>
-                                Download audio
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-
-                          {interaction.raw_audio && (
-                            <Tooltip
-                              open={
-                                openTooltipKey ===
-                                `retranscribe:${interaction.id}`
-                              }
-                              onOpenChange={open => {
-                                setOpenTooltipKey(
-                                  open
-                                    ? `retranscribe:${interaction.id}`
-                                    : null,
-                                )
-                              }}
-                            >
-                              <TooltipTrigger asChild>
-                                <button
-                                  className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600 disabled:opacity-50"
-                                  onClick={() =>
-                                    handleRetranscribe(interaction)
-                                  }
-                                  disabled={isRetranscribing || isClearingAll}
-                                  aria-label="ReTranscribe"
-                                >
-                                  <Refresh
-                                    className={`w-4 h-4 ${
-                                      isRetranscribing ? 'animate-spin' : ''
-                                    }`}
-                                  />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" sideOffset={5}>
-                                {isRetranscribing
-                                  ? 'Retranscribing...'
-                                  : 'ReTranscribe'}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-
-                          {/* Send to Playground button */}
-                          {interaction.raw_audio && (
-                            <Tooltip
-                              open={
-                                openTooltipKey ===
-                                `playground:${interaction.id}`
-                              }
-                              onOpenChange={open => {
-                                setOpenTooltipKey(
-                                  open ? `playground:${interaction.id}` : null,
-                                )
-                              }}
-                            >
-                              <TooltipTrigger asChild>
-                                <button
-                                  className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600"
-                                  onClick={() =>
-                                    handleSendToPlayground(interaction)
+                                    handleDeleteInteraction(interaction)
                                   }
                                   disabled={isClearingAll}
-                                  aria-label="Send to Playground"
                                 >
-                                  <Flask className="w-4 h-4" />
+                                  <Trash className="w-4 h-4" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="top" sideOffset={5}>
-                                Send to Playground
+                                Delete
                               </TooltipContent>
                             </Tooltip>
-                          )}
-
-                          {/* Play/Stop button with tooltip */}
-                          <Tooltip
-                            open={openTooltipKey === `play:${interaction.id}`}
-                            onOpenChange={open => {
-                              setOpenTooltipKey(
-                                open ? `play:${interaction.id}` : null,
-                              )
-                            }}
-                          >
-                            <TooltipTrigger asChild>
-                              <button
-                                className={`p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer ${
-                                  playingAudio === interaction.id
-                                    ? 'bg-blue-50 text-blue-600'
-                                    : 'text-gray-600'
-                                }`}
-                                onClick={() => handleAudioPlayStop(interaction)}
-                                disabled={!interaction.raw_audio}
-                              >
-                                {playingAudio === interaction.id ? (
-                                  <Stop className="w-4 h-4" />
-                                ) : (
-                                  <Play className="w-4 h-4" />
-                                )}
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" sideOffset={5}>
-                              {!interaction.raw_audio
-                                ? 'No audio available'
-                                : playingAudio === interaction.id
-                                  ? 'Stop'
-                                  : 'Play'}
-                            </TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip
-                            open={openTooltipKey === `delete:${interaction.id}`}
-                            onOpenChange={open => {
-                              setOpenTooltipKey(
-                                open ? `delete:${interaction.id}` : null,
-                              )
-                            }}
-                          >
-                            <TooltipTrigger asChild>
-                              <button
-                                className="p-1.5 hover:bg-red-50 rounded transition-colors cursor-pointer text-gray-600 hover:text-red-600"
-                                onClick={() =>
-                                  handleDeleteInteraction(interaction)
-                                }
-                                disabled={isClearingAll}
-                              >
-                                <Trash className="w-4 h-4" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" sideOffset={5}>
-                              Delete
-                            </TooltipContent>
-                          </Tooltip>
+                          </div>
                         </div>
+
+                        {isExpanded && hasPolishedText && (
+                          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 text-sm text-gray-700">
+                            <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-gray-400">
+                              <span>Polished</span>
+                              <Tooltip
+                                open={
+                                  openTooltipKey ===
+                                  `copy:${polishedCopyKey}`
+                                }
+                                onOpenChange={open => {
+                                  if (open) {
+                                    setOpenTooltipKey(
+                                      `copy:${polishedCopyKey}`,
+                                    )
+                                  } else {
+                                    if (!copiedItems.has(polishedCopyKey)) {
+                                      setOpenTooltipKey(prev =>
+                                        prev === `copy:${polishedCopyKey}`
+                                          ? null
+                                          : prev,
+                                      )
+                                    }
+                                  }
+                                }}
+                              >
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className={`p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer ${
+                                      copiedItems.has(polishedCopyKey)
+                                        ? 'text-green-600'
+                                        : 'text-gray-600'
+                                    }`}
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        polishedText,
+                                        polishedCopyKey,
+                                      )
+                                    }
+                                  >
+                                    {copiedItems.has(polishedCopyKey) ? (
+                                      <Check className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={5}>
+                                  {copiedItems.has(polishedCopyKey)
+                                    ? 'Copied 🎉'
+                                    : 'Copy'}
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <div className="mt-1 whitespace-pre-wrap">
+                              {polishedText}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
