@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test'
-import { createTranscriptionPrompt } from './transcription.js'
+import { createAsrPrompt } from './transcription.js'
 
 // Mock console.log to capture logging during tests
 const originalConsoleLog = console.log
@@ -20,11 +20,11 @@ describe('transcription', () => {
   })
 
   describe('estimateTokenCount', () => {
-    // Since estimateTokenCount is not exported, we'll test it indirectly through createTranscriptionPrompt
+    // Since estimateTokenCount is not exported, we'll test it indirectly through createAsrPrompt
     it('should estimate tokens correctly through prompt creation', () => {
       // Test with known input to verify token estimation logic
       const vocabulary = ['test'] // 4 characters = 1 token
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       // The base prompt is "Dictionary entries include: " (26 chars) + "test" (4 chars) + ". " (2 chars) + "Transcribe accurately with proper punctuation and capitalization." (68 chars)
       // Total: 100 characters ≈ 25 tokens, well under the 224 limit
@@ -36,9 +36,9 @@ describe('transcription', () => {
     })
   })
 
-  describe('createTranscriptionPrompt', () => {
+  describe('createAsrPrompt', () => {
     it('should create prompt with empty vocabulary', () => {
-      createTranscriptionPrompt([])
+      createAsrPrompt([])
 
       expect(consoleLogs).toHaveLength(1)
       expect(consoleLogs[0]).toMatch(
@@ -49,7 +49,7 @@ describe('transcription', () => {
 
     it('should create prompt with small vocabulary', () => {
       const vocabulary = ['hello', 'world', 'test']
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       expect(result).toBe('Dictionary entries include: hello, world, test. ')
       expect(consoleLogs).toHaveLength(1)
@@ -61,7 +61,7 @@ describe('transcription', () => {
 
     it('should handle single vocabulary item', () => {
       const vocabulary = ['single']
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       expect(result).toBe('Dictionary entries include: single. ')
       expect(consoleLogs).toHaveLength(1)
@@ -70,7 +70,7 @@ describe('transcription', () => {
     it('should truncate vocabulary when it exceeds token limit', () => {
       // Create a large vocabulary that will exceed the token limit
       const largeVocabulary = Array.from({ length: 200 }, (_, i) => `word${i}`)
-      const result = createTranscriptionPrompt(largeVocabulary)
+      const result = createAsrPrompt(largeVocabulary)
 
       // Should still have the correct structure
       expect(result).toStartWith('Dictionary entries include: ')
@@ -96,7 +96,7 @@ describe('transcription', () => {
         { length: 300 },
         (_, i) => `verylongwordthataddsmanytokens${i}`,
       )
-      const result = createTranscriptionPrompt(largeVocabulary)
+      const result = createAsrPrompt(largeVocabulary)
 
       // Estimate tokens for the result (rough approximation: 1 token ≈ 4 characters)
       const estimatedTokens = Math.ceil(result.length / 4)
@@ -108,7 +108,7 @@ describe('transcription', () => {
 
     it('should maintain proper prompt structure', () => {
       const vocabulary = ['alpha', 'beta', 'gamma']
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       expect(result).toStartWith('Dictionary entries include: ')
       expect(result).toContain('alpha, beta, gamma')
@@ -116,7 +116,7 @@ describe('transcription', () => {
 
     it('should handle vocabulary with special characters', () => {
       const vocabulary = ['hello-world', 'test_case', 'special@char']
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       expect(result).toBe(
         'Dictionary entries include: hello-world, test_case, special@char. ',
@@ -125,7 +125,7 @@ describe('transcription', () => {
 
     it('should handle vocabulary with very long individual words', () => {
       const vocabulary = ['a'.repeat(100), 'b'.repeat(50)]
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       // Should still create a valid prompt
       expect(result).toStartWith('Dictionary entries include: ')
@@ -133,7 +133,7 @@ describe('transcription', () => {
 
     it('should properly join vocabulary with commas and spaces', () => {
       const vocabulary = ['one', 'two', 'three', 'four']
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       expect(result).toBe('Dictionary entries include: one, two, three, four. ')
     })
@@ -144,7 +144,7 @@ describe('transcription', () => {
         { length: 100 },
         (_, i) => `word${i}thisisalongword`,
       )
-      const result = createTranscriptionPrompt(vocabulary)
+      const result = createAsrPrompt(vocabulary)
 
       if (consoleLogs.some(log => log.includes('vocabulary truncated'))) {
         // If truncation occurred, ensure no partial words at the end
@@ -165,7 +165,7 @@ describe('transcription', () => {
     it('should return simple prompt when vocabulary becomes empty after processing', () => {
       // Test edge case where vocabulary might be filtered to empty
       const vocabulary = [''] // This should be filtered out or result in empty vocab
-      createTranscriptionPrompt(vocabulary)
+      createAsrPrompt(vocabulary)
 
       // Should return just the base instruction since vocabulary is effectively empty
       expect(consoleLogs).toHaveLength(1)

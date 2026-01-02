@@ -1,7 +1,7 @@
 import Groq from 'groq-sdk'
 import { toFile } from 'groq-sdk/uploads'
 import * as dotenv from 'dotenv'
-import { createTranscriptionPrompt } from '../prompts/transcription.js'
+import { createAsrPrompt } from '../prompts/transcription.js'
 import {
   ClientApiKeyError,
   ClientUnavailableError,
@@ -128,7 +128,7 @@ class GroqClient implements LlmProvider {
       const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
 
       // Create a concise but effective transcription prompt
-      const transcriptionPrompt = createTranscriptionPrompt(fullVocabulary)
+      const transcriptionPrompt = createAsrPrompt(fullVocabulary)
 
       const transcription = await this._client.audio.transcriptions.create({
         // The toFile helper correctly handles buffers for multipart/form-data uploads.

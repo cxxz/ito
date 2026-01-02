@@ -14,7 +14,7 @@ import { ClientProvider } from './providers.js'
 import { LlmProvider } from './llmProvider.js'
 import { TranscriptionOptions } from './asrConfig.js'
 import { IntentTranscriptionOptions } from './intentTranscriptionConfig.js'
-import { createTranscriptionPrompt } from '../prompts/transcription.js'
+import { createAsrPrompt } from '../prompts/transcription.js'
 
 // Load environment variables from .env file
 dotenv.config()
@@ -132,7 +132,7 @@ class OpenaiClient implements LlmProvider {
       )
 
       const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
-      const transcriptionPrompt = createTranscriptionPrompt(fullVocabulary)
+      const transcriptionPrompt = createAsrPrompt(fullVocabulary)
 
       const transcription = await this._client.audio.transcriptions.create({
         file,

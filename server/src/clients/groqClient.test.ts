@@ -44,7 +44,7 @@ mock.module('dotenv', () => ({
 
 // Now we can safely import the groqClient
 const { groqClient, itoVocabulary } = await import('./groqClient.js')
-const { createTranscriptionPrompt } = await import(
+const { createAsrPrompt } = await import(
   '../prompts/transcription.js'
 )
 
@@ -71,7 +71,7 @@ describe('GroqClient', () => {
       const audioBuffer = Buffer.from('mock audio data')
       const asrModel = 'whisper-large-v3-turbo'
       const vocabulary = ['hello', 'world']
-      const transcriptionPrompt = createTranscriptionPrompt([
+      const transcriptionPrompt = createAsrPrompt([
         ...itoVocabulary,
         ...vocabulary,
       ])
@@ -102,7 +102,7 @@ describe('GroqClient', () => {
 
       const audioBuffer = Buffer.from('mock audio data')
       const asrModel = 'distil-whisper-large-v3-turbo-en'
-      const transcriptionPrompt = createTranscriptionPrompt(itoVocabulary)
+      const transcriptionPrompt = createAsrPrompt(itoVocabulary)
 
       await groqClient.transcribeAudio(audioBuffer, {
         asrModel,
@@ -128,7 +128,7 @@ describe('GroqClient', () => {
       const audioBuffer = Buffer.from('mock audio data')
       const asrModel = 'whisper-large-v3-turbo'
       const vocabulary = ['custom', 'vocabulary', 'test']
-      const transcriptionPrompt = createTranscriptionPrompt([
+      const transcriptionPrompt = createAsrPrompt([
         ...itoVocabulary,
         ...vocabulary,
       ])
@@ -158,7 +158,7 @@ describe('GroqClient', () => {
 
       const audioBuffer = Buffer.from('mock audio data')
       const asrModel = 'whisper-large-v3-turbo'
-      const transcriptionPrompt = createTranscriptionPrompt(itoVocabulary)
+      const transcriptionPrompt = createAsrPrompt(itoVocabulary)
 
       await groqClient.transcribeAudio(audioBuffer, {
         fileType: 'wav',

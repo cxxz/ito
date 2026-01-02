@@ -8,7 +8,7 @@ function estimateTokenCount(text: string): number {
 /**
  * Creates a transcription prompt that stays within the 224 token limit
  */
-export function createTranscriptionPrompt(vocabulary: string[]): string {
+export function createAsrPrompt(vocabulary: string[]): string {
   const suffix = ''
   const maxTokens = 224
 
