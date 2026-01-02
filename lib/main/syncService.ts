@@ -183,18 +183,54 @@ export class SyncService {
           continue
         }
 
-        // Convert Uint8Array back to Buffer
-        let audioBuffer: Buffer | null = null
-        if (
-          remoteInteraction.rawAudio &&
-          remoteInteraction.rawAudio.length > 0
-        ) {
-          audioBuffer = Buffer.from(
-            remoteInteraction.rawAudio.buffer,
-            remoteInteraction.rawAudio.byteOffset,
-            remoteInteraction.rawAudio.byteLength,
-          )
+        const existingInteraction = await InteractionsTable.findById(
+          remoteInteraction.id,
+        )
+
+        // Remote Interaction payloads currently omit raw audio; preserve local audio unless explicitly provided.
+        const remoteRawAudio = (
+          remoteInteraction as { rawAudio?: Uint8Array | null }
+        ).rawAudio
+        const hasRemoteRawAudio = Object.prototype.hasOwnProperty.call(
+          remoteInteraction as object,
+          'rawAudio',
+        )
+        let audioBuffer: Buffer | null = existingInteraction?.raw_audio ?? null
+
+        if (hasRemoteRawAudio) {
+          if (remoteRawAudio && remoteRawAudio.length > 0) {
+            audioBuffer = Buffer.from(
+              remoteRawAudio.buffer,
+              remoteRawAudio.byteOffset,
+              remoteRawAudio.byteLength,
+            )
+          } else {
+            audioBuffer = null
+          }
         }
+
+        const hasRemoteRawAudioId = Object.prototype.hasOwnProperty.call(
+          remoteInteraction as object,
+          'rawAudioId',
+        )
+        const remoteRawAudioId = (
+          remoteInteraction as { rawAudioId?: string | null }
+        ).rawAudioId
+        const rawAudioId = hasRemoteRawAudioId
+          ? remoteRawAudioId || null
+          : existingInteraction?.raw_audio_id ?? null
+
+        const hasRemoteSampleRate = Object.prototype.hasOwnProperty.call(
+          remoteInteraction as object,
+          'sampleRate',
+        )
+        const remoteSampleRate = (
+          remoteInteraction as { sampleRate?: number | null }
+        ).sampleRate
+        const sampleRate =
+          hasRemoteSampleRate && typeof remoteSampleRate === 'number'
+            ? remoteSampleRate
+            : existingInteraction?.sample_rate ?? null
 
         const localInteraction: Interaction = {
           id: remoteInteraction.id,
@@ -211,8 +247,8 @@ export class SyncService {
           created_at: remoteInteraction.createdAt,
           updated_at: remoteInteraction.updatedAt,
           deleted_at: remoteInteraction.deletedAt || null,
-          raw_audio_id: remoteInteraction.rawAudioId || null,
-          sample_rate: null,
+          raw_audio_id: rawAudioId,
+          sample_rate: sampleRate,
         }
         await InteractionsTable.upsert(localInteraction)
       }

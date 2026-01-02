@@ -316,6 +316,53 @@ describe('SyncService Integration Tests', () => {
       expect(mockInteractionsTable.upsert).toHaveBeenCalled()
     })
 
+    test('should preserve local audio when remote payload omits raw audio', async () => {
+      const existingInteraction = {
+        id: 'remote-interaction-123',
+        user_id: 'test-user-123',
+        title: 'Local interaction',
+        asr_output: { transcript: 'Local transcript' },
+        llm_output: { response: 'Local response' },
+        raw_audio: Buffer.from([9, 8, 7]),
+        raw_audio_id: 'local-audio-123',
+        duration_ms: 1200,
+        sample_rate: 16000,
+        created_at: '2024-01-02T00:00:00.000Z',
+        updated_at: '2024-01-02T00:00:00.000Z',
+        deleted_at: null,
+      }
+
+      const remoteInteraction = {
+        id: 'remote-interaction-123',
+        userId: 'test-user-123',
+        title: 'Remote interaction',
+        asrOutput: JSON.stringify({ transcript: 'Hello world' }),
+        llmOutput: JSON.stringify({ response: 'Hi there' }),
+        durationMs: 1500,
+        createdAt: '2024-01-02T00:00:00.000Z',
+        updatedAt: '2024-01-02T00:00:00.000Z',
+        deletedAt: null,
+      }
+
+      mockInteractionsTable.findById.mockResolvedValueOnce(
+        existingInteraction as any,
+      )
+      mockGrpcClient.listInteractionsSince.mockResolvedValueOnce([
+        remoteInteraction,
+      ])
+
+      await syncService.start()
+
+      expect(mockInteractionsTable.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'remote-interaction-123',
+          raw_audio: existingInteraction.raw_audio,
+          raw_audio_id: existingInteraction.raw_audio_id,
+          sample_rate: existingInteraction.sample_rate,
+        }),
+      )
+    })
+
     test('should handle dictionary items correctly', async () => {
       const remoteDictionaryItem = {
         id: 'remote-dict-123',
