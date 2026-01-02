@@ -183,20 +183,24 @@ export const usePlaygroundStore = create<PlaygroundStore>((set, get) => ({
     const appState = useAdvancedSettingsStore.getState()
     const llmSettings = appState.llm
     const defaults = appState.defaults
+    const serverAsrDefaults = appState.asrProviderDefaultModels
 
     // ASR provider is stored in defaults (llm.asrProvider is always null per syncService)
     const asrProvider = defaults?.asrProvider || DEFAULT_ASR_PROVIDER
     const asrModel =
       llmSettings?.asrModel ||
       defaults?.asrModel ||
+      serverAsrDefaults?.[asrProvider] ||
       ASR_PROVIDER_DEFAULT_MODELS[asrProvider] ||
       ''
 
     // Polish settings are user-configurable and stored in llm
+    const serverLlmDefaults = appState.llmProviderDefaultModels
     const polishLlmProvider =
       llmSettings?.polishLlmProvider || DEFAULT_POLISH_PROVIDER
     const polishLlmModel =
       llmSettings?.polishLlmModel ||
+      serverLlmDefaults?.[polishLlmProvider] ||
       LLM_PROVIDER_DEFAULT_MODELS[polishLlmProvider] ||
       ''
     const polishLlmTemperature =
@@ -225,10 +229,18 @@ export const usePlaygroundStore = create<PlaygroundStore>((set, get) => ({
   },
 
   setAsrProvider: (provider: string) => {
+    // Get the server-provided default models (respects env var overrides)
+    const appState = useAdvancedSettingsStore.getState()
+    const serverDefaults = appState.asrProviderDefaultModels
+    // Use server defaults if available, otherwise fall back to hardcoded
+    const defaultModel =
+      serverDefaults?.[provider] ||
+      ASR_PROVIDER_DEFAULT_MODELS[provider] ||
+      ''
     set({
       asrProvider: provider,
       // Set model to the default for the new provider
-      asrModel: ASR_PROVIDER_DEFAULT_MODELS[provider] || '',
+      asrModel: defaultModel,
     })
   },
 
@@ -241,10 +253,18 @@ export const usePlaygroundStore = create<PlaygroundStore>((set, get) => ({
   },
 
   setPolishLlmProvider: (provider: string) => {
+    // Get the server-provided default models (respects env var overrides)
+    const appState = useAdvancedSettingsStore.getState()
+    const serverDefaults = appState.llmProviderDefaultModels
+    // Use server defaults if available, otherwise fall back to hardcoded
+    const defaultModel =
+      serverDefaults?.[provider] ||
+      LLM_PROVIDER_DEFAULT_MODELS[provider] ||
+      ''
     set({
       polishLlmProvider: provider,
       // Set model to the default for the new provider
-      polishLlmModel: LLM_PROVIDER_DEFAULT_MODELS[provider] || '',
+      polishLlmModel: defaultModel,
     })
   },
 
