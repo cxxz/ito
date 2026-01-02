@@ -352,6 +352,21 @@ export function registerIPC() {
     await InteractionsTable.softDelete(id)
   })
 
+  // Playground
+  handleIPC('playground:run', async (_e, request) => {
+    const { runPlayground } = await import(
+      '../main/playground/playgroundRunner'
+    )
+    return runPlayground(request)
+  })
+
+  handleIPC('playground:polish', async (_e, request) => {
+    const { runPlaygroundPolish } = await import(
+      '../main/playground/playgroundRunner'
+    )
+    return runPlaygroundPolish(request)
+  })
+
   // User Data Deletion
   handleIPC('delete-user-data', async _e => {
     const userId = getCurrentUserId()

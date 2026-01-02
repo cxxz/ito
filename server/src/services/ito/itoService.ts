@@ -35,6 +35,10 @@ import {
   getProviderDefaultLlmModels,
 } from './constants.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
+import {
+  handlePlaygroundRun,
+  handlePlaygroundPolish,
+} from '../playground/playgroundHandler.js'
 
 function dbToNotePb(dbNote: DbNote): Note {
   return create(NoteSchema, {
@@ -360,6 +364,14 @@ export default (router: ConnectRouter) => {
         request,
       )
       return dbToAdvancedSettingsPb(updatedSettings)
+    },
+
+    async playgroundRun(request) {
+      return handlePlaygroundRun(request)
+    },
+
+    async playgroundPolish(request) {
+      return handlePlaygroundPolish(request)
     },
   })
 }

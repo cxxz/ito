@@ -2,6 +2,7 @@ import {
   Home,
   BookOpen,
   FileText,
+  Flask,
   CogFour,
   InfoCircle,
 } from '@mynaui/icons-react'
@@ -12,6 +13,7 @@ import { NavItem } from '../ui/nav-item'
 import HomeContent from './contents/HomeContent'
 import DictionaryContent from './contents/DictionaryContent'
 import NotesContent from './contents/NotesContent'
+import PlaygroundContent from './contents/PlaygroundContent'
 import SettingsContent from './contents/SettingsContent'
 import AboutContent from './contents/AboutContent'
 
@@ -44,6 +46,8 @@ export default function HomeKit() {
         return <DictionaryContent />
       case 'notes':
         return <NotesContent />
+      case 'playground':
+        return <PlaygroundContent />
       case 'settings':
         return <SettingsContent />
       case 'about':
@@ -94,6 +98,13 @@ export default function HomeKit() {
               isActive={currentPage === 'notes'}
               showText={showText}
               onClick={() => setCurrentPage('notes')}
+            />
+            <NavItem
+              icon={<Flask className="w-5 h-5" />}
+              label="Playground"
+              isActive={currentPage === 'playground'}
+              showText={showText}
+              onClick={() => setCurrentPage('playground')}
             />
             <NavItem
               icon={<CogFour className="w-5 h-5" />}

@@ -37,6 +37,10 @@ service ItoService {
   // Advanced Settings Service
   rpc GetAdvancedSettings(GetAdvancedSettingsRequest) returns (AdvancedSettings);
   rpc UpdateAdvancedSettings(UpdateAdvancedSettingsRequest) returns (AdvancedSettings);
+
+  // Playground Service - for experimenting with transcription and polish settings
+  rpc PlaygroundRun(PlaygroundRunRequest) returns (PlaygroundRunResponse);
+  rpc PlaygroundPolish(PlaygroundPolishRequest) returns (PlaygroundPolishResponse);
 }
 
 service TimingService {
@@ -329,4 +333,42 @@ message SubmitTimingReportsRequest {
 
 message SubmitTimingReportsResponse {
   // Empty response
+}
+
+// Playground
+// -----------------------------------------------------------------
+// Request to run playground transcription and polish
+message PlaygroundRunRequest {
+  bytes audio_data = 1;                    // Audio file contents (WAV/PCM format)
+  int32 sample_rate = 2;                   // Audio sample rate (e.g., 16000)
+  repeated string custom_vocabulary = 3;   // User-provided vocabulary words
+  string polish_llm_provider = 4;          // e.g., "groq", "cerebras", "openai"
+  string polish_llm_model = 5;             // Model name for polish LLM
+  float polish_llm_temperature = 6;        // Temperature for polish LLM
+  bool skip_polish = 7;                    // If true, skip polish step (transcribe only)
+  string asr_provider = 8;                 // ASR provider (e.g., "groq", "aliyun")
+  string asr_model = 9;                    // Model name for ASR
+}
+
+// Response from playground run with both ASR and polished outputs
+message PlaygroundRunResponse {
+  string asr_output = 1;                   // Raw ASR transcription
+  string polished_output = 2;              // Polished transcription from LLM
+  ClientError asr_error = 3;               // Error during ASR (if any)
+  ClientError polish_error = 4;            // Error during polish (if any)
+}
+
+// Request to polish text in playground
+message PlaygroundPolishRequest {
+  string transcript = 1;                   // Raw ASR text to polish
+  string transcription_prompt = 2;         // Custom prompt (editable by user)
+  string polish_llm_provider = 3;          // e.g., "groq", "cerebras", "openai"
+  string polish_llm_model = 4;             // Model name for polish LLM
+  float polish_llm_temperature = 5;        // Temperature for polish LLM
+}
+
+// Response from playground polish
+message PlaygroundPolishResponse {
+  string polished_output = 1;              // Polished transcription from LLM
+  ClientError error = 2;                   // Error during polish (if any)
 }

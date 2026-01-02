@@ -13,9 +13,7 @@ const createMockResponse = (transcript: string) =>
   })
 
 const mockGrpcClient = {
-  transcribeStream: mock(() =>
-    Promise.resolve(createMockResponse('default')),
-  ),
+  transcribeStream: mock(() => Promise.resolve(createMockResponse('default'))),
 }
 mock.module('../clients/grpcClient', () => ({
   grpcClient: mockGrpcClient,

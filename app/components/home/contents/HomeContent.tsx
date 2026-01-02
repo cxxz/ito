@@ -10,11 +10,14 @@ import {
   Trash,
   Refresh,
   DangerTriangle,
+  Flask,
 } from '@mynaui/icons-react'
 import { EXTERNAL_LINKS } from '@/lib/constants/external-links'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { Tooltip, TooltipTrigger, TooltipContent } from '../../ui/tooltip'
 import { useAuthStore } from '@/app/store/useAuthStore'
+import { useMainStore } from '@/app/store/useMainStore'
+import { usePlaygroundStore } from '@/app/store/usePlaygroundStore'
 import { Interaction } from '@/lib/main/sqlite/models'
 import { TotalWordsIcon } from '../../icons/TotalWordsIcon'
 import { SpeedIcon } from '../../icons/SpeedIcon'
@@ -541,6 +544,32 @@ export default function HomeContent() {
     }
   }
 
+  const { setCurrentPage } = useMainStore()
+  const { setAudioFromInteraction } = usePlaygroundStore()
+
+  const handleSendToPlayground = (interaction: Interaction) => {
+    if (!interaction.raw_audio) {
+      console.warn('No audio data available for this interaction')
+      return
+    }
+
+    // Convert raw_audio to ArrayBuffer
+    const audioBuffer =
+      interaction.raw_audio instanceof ArrayBuffer
+        ? interaction.raw_audio
+        : new Uint8Array(interaction.raw_audio).buffer
+
+    // Load audio into playground store
+    setAudioFromInteraction(
+      interaction.id,
+      audioBuffer,
+      interaction.sample_rate || 16000,
+    )
+
+    // Navigate to playground
+    setCurrentPage('playground')
+  }
+
   return (
     <div className="w-full h-full flex flex-col">
       {/* Fixed Header Content */}
@@ -798,7 +827,9 @@ export default function HomeContent() {
                               }
                               onOpenChange={open => {
                                 setOpenTooltipKey(
-                                  open ? `retranscribe:${interaction.id}` : null,
+                                  open
+                                    ? `retranscribe:${interaction.id}`
+                                    : null,
                                 )
                               }}
                             >
@@ -822,6 +853,37 @@ export default function HomeContent() {
                                 {isRetranscribing
                                   ? 'Retranscribing...'
                                   : 'ReTranscribe'}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {/* Send to Playground button */}
+                          {interaction.raw_audio && (
+                            <Tooltip
+                              open={
+                                openTooltipKey ===
+                                `playground:${interaction.id}`
+                              }
+                              onOpenChange={open => {
+                                setOpenTooltipKey(
+                                  open ? `playground:${interaction.id}` : null,
+                                )
+                              }}
+                            >
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="p-1.5 hover:bg-gray-200 rounded transition-colors cursor-pointer text-gray-600"
+                                  onClick={() =>
+                                    handleSendToPlayground(interaction)
+                                  }
+                                  disabled={isClearingAll}
+                                  aria-label="Send to Playground"
+                                >
+                                  <Flask className="w-4 h-4" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={5}>
+                                Send to Playground
                               </TooltipContent>
                             </Tooltip>
                           )}

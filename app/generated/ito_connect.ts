@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { AdvancedSettings, CreateDictionaryItemRequest, CreateInteractionRequest, CreateNoteRequest, DeleteDictionaryItemRequest, DeleteInteractionRequest, DeleteNoteRequest, DeleteUserDataRequest, DictionaryItem, Empty, GetAdvancedSettingsRequest, GetInteractionRequest, GetNoteRequest, Interaction, ListDictionaryItemsRequest, ListDictionaryItemsResponse, ListInteractionsRequest, ListInteractionsResponse, ListNotesRequest, ListNotesResponse, Note, SubmitTimingReportsRequest, SubmitTimingReportsResponse, TranscribeStreamRequest, TranscribeStreamResponse, UpdateAdvancedSettingsRequest, UpdateDictionaryItemRequest, UpdateInteractionRequest, UpdateNoteRequest } from "./ito_pb.js";
+import { AdvancedSettings, CreateDictionaryItemRequest, CreateInteractionRequest, CreateNoteRequest, DeleteDictionaryItemRequest, DeleteInteractionRequest, DeleteNoteRequest, DeleteUserDataRequest, DictionaryItem, Empty, GetAdvancedSettingsRequest, GetInteractionRequest, GetNoteRequest, Interaction, ListDictionaryItemsRequest, ListDictionaryItemsResponse, ListInteractionsRequest, ListInteractionsResponse, ListNotesRequest, ListNotesResponse, Note, PlaygroundPolishRequest, PlaygroundPolishResponse, PlaygroundRunRequest, PlaygroundRunResponse, SubmitTimingReportsRequest, SubmitTimingReportsResponse, TranscribeStreamRequest, TranscribeStreamResponse, UpdateAdvancedSettingsRequest, UpdateDictionaryItemRequest, UpdateInteractionRequest, UpdateNoteRequest } from "./ito_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -187,6 +187,26 @@ export const ItoService = {
       name: "UpdateAdvancedSettings",
       I: UpdateAdvancedSettingsRequest,
       O: AdvancedSettings,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Playground Service - for experimenting with transcription and polish settings
+     *
+     * @generated from rpc ito.ItoService.PlaygroundRun
+     */
+    playgroundRun: {
+      name: "PlaygroundRun",
+      I: PlaygroundRunRequest,
+      O: PlaygroundRunResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc ito.ItoService.PlaygroundPolish
+     */
+    playgroundPolish: {
+      name: "PlaygroundPolish",
+      I: PlaygroundPolishRequest,
+      O: PlaygroundPolishResponse,
       kind: MethodKind.Unary,
     },
   }

@@ -25,9 +25,16 @@ import {
   TranscribeStreamRequest,
   TranscribeStreamResponse,
   TranscribePhase,
+  PlaygroundRunRequestSchema,
+  PlaygroundRunResponse,
+  PlaygroundPolishRequestSchema,
+  PlaygroundPolishResponse,
 } from '@/app/generated/ito_pb'
 import { createClient } from '@connectrpc/connect'
-import { createConnectTransport, Http2SessionManager } from '@connectrpc/connect-node'
+import {
+  createConnectTransport,
+  Http2SessionManager,
+} from '@connectrpc/connect-node'
 import { BrowserWindow } from 'electron'
 import { create } from '@bufbuild/protobuf'
 import { Note, Interaction, DictionaryItem } from '../main/sqlite/models'
@@ -76,7 +83,9 @@ class GrpcClient {
 
   // Public method to abort HTTP/2 session from external callers (e.g., uncaught exception handler)
   abortSession() {
-    console.log('[gRPC Client] External abort requested, resetting HTTP/2 session')
+    console.log(
+      '[gRPC Client] External abort requested, resetting HTTP/2 session',
+    )
     this.sessionManager.abort()
   }
 
@@ -100,7 +109,10 @@ class GrpcClient {
   // This prevents using stale connections that the server has closed
   private async ensureHealthyConnection(): Promise<void> {
     const currentState = this.sessionManager.state()
-    console.log('[gRPC Client] Pre-stream connection check, current state:', currentState)
+    console.log(
+      '[gRPC Client] Pre-stream connection check, current state:',
+      currentState,
+    )
 
     // For streaming operations, don't trust idle connections - they may be stale
     // The server may have closed the connection without our knowledge (GOAWAY, timeout, etc.)
@@ -115,7 +127,10 @@ class GrpcClient {
     // Establish a fresh connection
     try {
       const connectResult = await this.sessionManager.connect()
-      console.log('[gRPC Client] Fresh connection established, state:', connectResult)
+      console.log(
+        '[gRPC Client] Fresh connection established, state:',
+        connectResult,
+      )
 
       if (connectResult === 'error') {
         console.log('[gRPC Client] Connection failed, retrying...')
@@ -194,44 +209,51 @@ class GrpcClient {
     onPhaseUpdate?: (phase: TranscribePhase) => void,
   ): Promise<TranscribeStreamResponse> {
     // Disable retry for streaming - the input stream can only be consumed once
-    return this.withRetry(async () => {
-      // Pre-stream connection verification to detect stale connections
-      await this.ensureHealthyConnection()
+    return this.withRetry(
+      async () => {
+        // Pre-stream connection verification to detect stale connections
+        await this.ensureHealthyConnection()
 
-      this.logSessionState('Starting transcribe stream')
+        this.logSessionState('Starting transcribe stream')
 
-      const responseStream = this.client.transcribeStream(stream, {
-        headers: this.getHeaders(),
-        signal,
-      })
+        const responseStream = this.client.transcribeStream(stream, {
+          headers: this.getHeaders(),
+          signal,
+        })
 
-      let finalResponse: TranscribeStreamResponse | null = null
-      try {
-        for await (const response of responseStream) {
-          if (onPhaseUpdate) {
-            onPhaseUpdate(response.phase)
+        let finalResponse: TranscribeStreamResponse | null = null
+        try {
+          for await (const response of responseStream) {
+            if (onPhaseUpdate) {
+              onPhaseUpdate(response.phase)
+            }
+            if (response.phase === TranscribePhase.PHASE_COMPLETE) {
+              finalResponse = response
+            }
           }
-          if (response.phase === TranscribePhase.PHASE_COMPLETE) {
-            finalResponse = response
+        } catch (error) {
+          this.logSessionState('Stream error occurred')
+          // If we get an HTTP/2 error, abort the session to force a fresh connection next time
+          if (this.isHttp2Error(error)) {
+            console.log(
+              '[gRPC Client] HTTP/2 error detected, aborting session to force reconnection',
+            )
+            this.sessionManager.abort()
           }
+          throw error
         }
-      } catch (error) {
-        this.logSessionState('Stream error occurred')
-        // If we get an HTTP/2 error, abort the session to force a fresh connection next time
-        if (this.isHttp2Error(error)) {
-          console.log('[gRPC Client] HTTP/2 error detected, aborting session to force reconnection')
-          this.sessionManager.abort()
+
+        this.logSessionState('Stream completed')
+
+        if (!finalResponse) {
+          throw new Error(
+            'No final response received from transcription stream',
+          )
         }
-        throw error
-      }
-
-      this.logSessionState('Stream completed')
-
-      if (!finalResponse) {
-        throw new Error('No final response received from transcription stream')
-      }
-      return finalResponse
-    }, { retryOnHttp2Error: false })
+        return finalResponse
+      },
+      { retryOnHttp2Error: false },
+    )
   }
 
   // =================================================================
@@ -457,6 +479,56 @@ class GrpcClient {
         reports,
       })
       return await this.timingClient.submitTimingReports(request, {
+        headers: this.getHeaders(),
+      })
+    })
+  }
+
+  async playgroundRun(params: {
+    audioData: Uint8Array
+    sampleRate: number
+    customVocabulary: string[]
+    asrProvider: string
+    asrModel: string
+    polishLlmProvider: string
+    polishLlmModel: string
+    polishLlmTemperature: number
+    skipPolish?: boolean
+  }): Promise<PlaygroundRunResponse> {
+    return this.withRetry(async () => {
+      const request = create(PlaygroundRunRequestSchema, {
+        audioData: params.audioData,
+        sampleRate: params.sampleRate,
+        customVocabulary: params.customVocabulary,
+        asrProvider: params.asrProvider,
+        asrModel: params.asrModel,
+        polishLlmProvider: params.polishLlmProvider,
+        polishLlmModel: params.polishLlmModel,
+        polishLlmTemperature: params.polishLlmTemperature,
+        skipPolish: params.skipPolish ?? false,
+      })
+      return await this.client.playgroundRun(request, {
+        headers: this.getHeaders(),
+      })
+    })
+  }
+
+  async playgroundPolish(params: {
+    transcript: string
+    transcriptionPrompt: string
+    polishLlmProvider: string
+    polishLlmModel: string
+    polishLlmTemperature: number
+  }): Promise<PlaygroundPolishResponse> {
+    return this.withRetry(async () => {
+      const request = create(PlaygroundPolishRequestSchema, {
+        transcript: params.transcript,
+        transcriptionPrompt: params.transcriptionPrompt,
+        polishLlmProvider: params.polishLlmProvider,
+        polishLlmModel: params.polishLlmModel,
+        polishLlmTemperature: params.polishLlmTemperature,
+      })
+      return await this.client.playgroundPolish(request, {
         headers: this.getHeaders(),
       })
     })

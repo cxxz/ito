@@ -30,6 +30,7 @@
         "@types/node": "^24.0.1",
         "@types/pg": "^8.15.4",
         "@types/uuid": "^10.0.0",
+        "@typescript/vfs": "1.6.2",
         "dotenv-cli": "^8.0.0",
         "prettier": "^3.5.3",
         "ts-node": "^10.9.2",
@@ -37,6 +38,9 @@
         "typescript": "^5.8.3",
       },
     },
+  },
+  "overrides": {
+    "@typescript/vfs": "1.6.2",
   },
   "packages": {
     "@bufbuild/buf": ["@bufbuild/buf@1.56.0", "", { "optionalDependencies": { "@bufbuild/buf-darwin-arm64": "1.56.0", "@bufbuild/buf-darwin-x64": "1.56.0", "@bufbuild/buf-linux-aarch64": "1.56.0", "@bufbuild/buf-linux-armv7": "1.56.0", "@bufbuild/buf-linux-x64": "1.56.0", "@bufbuild/buf-win32-arm64": "1.56.0", "@bufbuild/buf-win32-x64": "1.56.0" }, "bin": { "buf": "bin/buf", "protoc-gen-buf-breaking": "bin/protoc-gen-buf-breaking", "protoc-gen-buf-lint": "bin/protoc-gen-buf-lint" } }, "sha512-1xQWOf3FCDDTi+5B/VScQ73EP6ACwQPCP4ODvCq2L6IVgFtvYX49ur6cQ2qCM8yFitIHESm/Nbff93sh+V/Iog=="],
@@ -193,7 +197,7 @@
 
     "@types/uuid": ["@types/uuid@10.0.0", "", {}, "sha512-7gqG38EyHgyP1S+7+xomFtL+ZNHcKv6DwNaCZmJmo1vgMugyF3TCnXVg4t1uk89mLNwnLtnY3TpOpCOyp1/xHQ=="],
 
-    "@typescript/vfs": ["@typescript/vfs@1.6.1", "", { "dependencies": { "debug": "^4.1.1" }, "peerDependencies": { "typescript": "*" } }, "sha512-JwoxboBh7Oz1v38tPbkrZ62ZXNHAk9bJ7c9x0eI5zBfBnBYGhURdbnh7Z4smN/MV48Y5OCcZb58n972UtbazsA=="],
+    "@typescript/vfs": ["@typescript/vfs@1.6.2", "", { "dependencies": { "debug": "^4.1.1" }, "peerDependencies": { "typescript": "*" } }, "sha512-hoBwJwcbKHmvd2QVebiytN1aELvpk9B74B4L1mFm/XT1Q/VOYAWl2vQ9AWRFtQq8zmz6enTpfTV8WRc4ATjW/g=="],
 
     "abort-controller": ["abort-controller@3.0.0", "", { "dependencies": { "event-target-shim": "^5.0.0" } }, "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg=="],
 

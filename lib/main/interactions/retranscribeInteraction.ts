@@ -85,10 +85,7 @@ async function* streamAudioWithConfig(
     offset < audioBuffer.length;
     offset += AUDIO_CHUNK_SIZE_BYTES
   ) {
-    const chunk = audioBuffer.subarray(
-      offset,
-      offset + AUDIO_CHUNK_SIZE_BYTES,
-    )
+    const chunk = audioBuffer.subarray(offset, offset + AUDIO_CHUNK_SIZE_BYTES)
     yield create(TranscribeStreamRequestSchema, {
       payload: {
         case: 'audioData',

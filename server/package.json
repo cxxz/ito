@@ -47,10 +47,14 @@
     "@types/node": "^24.0.1",
     "@types/pg": "^8.15.4",
     "@types/uuid": "^10.0.0",
+    "@typescript/vfs": "1.6.2",
     "dotenv-cli": "^8.0.0",
     "prettier": "^3.5.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.2",
     "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "@typescript/vfs": "1.6.2"
   }
 }

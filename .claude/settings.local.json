@@ -46,7 +46,10 @@
       "Bash(bun proto:gen:client:*)",
       "Bash(bun runServerTests:*)",
       "Bash(bun runAllTests:*)",
-      "Bash(bun run proto:gen:*)"
+      "Bash(bun run proto:gen:*)",
+      "Bash(bun run proto:gen:server:*)",
+      "Bash(bun run proto:gen:client:*)",
+      "Bash(NODE_OPTIONS=\"\" bunx buf generate:*)"
     ],
     "defaultMode": "bypassPermissions"
   }

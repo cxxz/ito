@@ -124,6 +124,26 @@ const api = {
       ipcRenderer.invoke('interactions:retranscribe', id),
     delete: (id: string) => ipcRenderer.invoke('interactions:delete', id),
   },
+  playground: {
+    run: (request: {
+      audioBuffer: ArrayBuffer
+      sampleRate: number
+      customVocabulary: string[]
+      asrProvider: string
+      asrModel: string
+      polishLlmProvider: string
+      polishLlmModel: string
+      polishLlmTemperature: number
+      skipPolish?: boolean
+    }) => ipcRenderer.invoke('playground:run', request),
+    polish: (request: {
+      transcript: string
+      transcriptionPrompt: string
+      polishLlmProvider: string
+      polishLlmModel: string
+      polishLlmTemperature: number
+    }) => ipcRenderer.invoke('playground:polish', request),
+  },
   openMailto: (email: string) => ipcRenderer.invoke('open-mailto', email),
   loginItem: {
     setSettings: (enabled: boolean) =>
