@@ -7,16 +7,16 @@ import {
 
 describe('AsrModelSchema', () => {
   it('should accept valid ASR model names', () => {
-    expect(AsrModelSchema.parse('whisper-large-v3')).toBe('whisper-large-v3')
-    expect(AsrModelSchema.parse('distil-whisper-large-v3-en')).toBe(
-      'distil-whisper-large-v3-en',
+    expect(AsrModelSchema.parse('whisper-large-v3-turbo')).toBe('whisper-large-v3-turbo')
+    expect(AsrModelSchema.parse('distil-whisper-large-v3-turbo-en')).toBe(
+      'distil-whisper-large-v3-turbo-en',
     )
     expect(AsrModelSchema.parse('custom-model-v1.2')).toBe('custom-model-v1.2')
   })
 
   it('should trim whitespace', () => {
-    expect(AsrModelSchema.parse('  whisper-large-v3  ')).toBe(
-      'whisper-large-v3',
+    expect(AsrModelSchema.parse('  whisper-large-v3-turbo  ')).toBe(
+      'whisper-large-v3-turbo',
     )
   })
 

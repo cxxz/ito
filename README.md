@@ -109,7 +109,7 @@ cp .env.example .env
 	cd server
 	cp .env.example .env  # Edit with your API keys
 	# Optional: tweak server-controlled defaults that the app shows in Settings > Advanced
-	# (e.g. ASR_PROVIDER, ASR_MODEL, OPENAI_DEFAULT_LLM). See server/README.md.
+	# (e.g. ASR_PROVIDER, GROQ_DEFAULT_ASR_MODEL, OPENAI_DEFAULT_LLM). See server/README.md.
 	bun install
 	bun run local-db-up   # Start PostgreSQL database
 	bun run db:migrate    # Run database migrations

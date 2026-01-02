@@ -25,6 +25,12 @@ export function getAsrProvider(providerName: string): LlmProvider {
       }
       return aliyunClient
 
+    case ClientProvider.OPENAI:
+      if (!openaiClient?.isAvailable) {
+        throw new ClientUnavailableError(ClientProvider.OPENAI)
+      }
+      return openaiClient
+
     default:
       throw new ClientUnavailableError(providerName as ClientProvider)
   }
@@ -73,6 +79,10 @@ export function getAvailableAsrProviders(): ClientProvider[] {
 
   if (aliyunClient?.isAvailable) {
     providers.push(ClientProvider.ALIYUN)
+  }
+
+  if (openaiClient?.isAvailable) {
+    providers.push(ClientProvider.OPENAI)
   }
 
   return providers

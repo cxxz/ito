@@ -19,7 +19,11 @@ import {
   detectItoMode,
   getPromptForMode,
 } from './helpers.js'
-import { getDefaultLlmModel, ITO_MODE_SYSTEM_PROMPT } from './constants.js'
+import {
+  getDefaultAsrModel,
+  getDefaultLlmModel,
+  ITO_MODE_SYSTEM_PROMPT,
+} from './constants.js'
 import type { ItoContext } from './types.js'
 import { isAbortError, createAbortError } from '../../utils/abortUtils.js'
 import {
@@ -356,20 +360,17 @@ export class TranscribeStreamHandler {
   }
 
   private extractAsrConfig(mergedConfig: StreamConfig) {
-    // ASR_PROVIDER env var takes precedence over client settings
-    const asrProvider =
-      process.env.ASR_PROVIDER ||
-      this.resolveOrDefault(
-        mergedConfig.llmSettings?.asrProvider,
-        DEFAULT_ADVANCED_SETTINGS.asrProvider,
-      )
+    // Client settings take precedence, then fall back to server default
+    const asrProvider = this.resolveOrDefault(
+      mergedConfig.llmSettings?.asrProvider,
+      DEFAULT_ADVANCED_SETTINGS.asrProvider,
+    )
 
     // Determine the appropriate default model based on provider
-    const defaultAsrModel = this.getDefaultAsrModel(asrProvider)
+    const defaultAsrModel = getDefaultAsrModel(asrProvider)
 
-    // ASR_MODEL env var takes precedence, then client settings, then provider-specific default
+    // Client settings take precedence, then provider-specific default
     const asrModel =
-      process.env.ASR_MODEL ||
       this.resolveOrDefault(mergedConfig.llmSettings?.asrModel, '') ||
       defaultAsrModel
 
@@ -381,16 +382,6 @@ export class TranscribeStreamHandler {
         DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold,
       ),
       vocabulary: mergedConfig.vocabulary,
-    }
-  }
-
-  private getDefaultAsrModel(provider: string): string {
-    switch (provider) {
-      case 'aliyun':
-        return 'qwen3-asr-flash'
-      case 'groq':
-      default:
-        return DEFAULT_ADVANCED_SETTINGS.asrModel
     }
   }
 

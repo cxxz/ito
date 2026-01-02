@@ -75,6 +75,7 @@ export interface AdvancedSettings {
   grammarServiceEnabled: boolean
   defaults?: LlmSettings
   llmProviderDefaultModels?: Record<string, string>
+  asrProviderDefaultModels?: Record<string, string>
   macosAccessibilityContextEnabled: boolean
 }
 

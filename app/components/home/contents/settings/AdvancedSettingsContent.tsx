@@ -38,14 +38,22 @@ const FALLBACK_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   cerebras: 'qwen-3-235b-a22b-instruct-2507',
 }
 
+// Provider-specific default ASR models
+const FALLBACK_ASR_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  groq: 'whisper-large-v3-turbo',
+  aliyun: 'qwen3-asr-flash',
+  openai: 'whisper-1',
+}
+
 const llmSettingsConfig: LlmSettingConfig[] = [
   {
     name: 'asrProvider',
     label: 'ASR Provider',
-    placeholder: 'Enter ASR provider name',
-    description: '',
+    placeholder: 'Select ASR provider',
+    description: 'Speech-to-text provider for transcription',
     maxLength: modelProviderLengthLimit,
-    readOnly: true,
+    isSelect: true,
+    options: ['groq', 'aliyun', 'openai'],
   },
   {
     name: 'asrModel',
@@ -288,6 +296,7 @@ export default function AdvancedSettingsContent() {
     llm,
     defaults,
     llmProviderDefaultModels,
+    asrProviderDefaultModels,
     grammarServiceEnabled,
     macosAccessibilityContextEnabled,
     setLlmSettings,
@@ -333,13 +342,26 @@ export default function AdvancedSettingsContent() {
           }
         }
 
+        // Handle asrModel - resolve to provider default
+        if (key === 'asrModel') {
+          const resolvedProvider = llm.asrProvider ?? defaults?.asrProvider
+          if (resolvedProvider) {
+            const providerDefaults =
+              asrProviderDefaultModels ?? FALLBACK_ASR_PROVIDER_DEFAULT_MODELS
+            const providerDefaultModel = providerDefaults[resolvedProvider]
+            if (providerDefaultModel) {
+              return providerDefaultModel
+            }
+          }
+        }
+
         if (defaults) {
           return defaults[key] ?? null
         }
       }
       return value
     },
-    [llm, defaults, llmProviderDefaultModels],
+    [llm, defaults, llmProviderDefaultModels, asrProviderDefaultModels],
   )
 
   const flushPendingSave = useCallback(async () => {
@@ -439,6 +461,13 @@ export default function AdvancedSettingsContent() {
         // Auto-update polishLlmModel when polishLlmProvider changes
         updatedLlm = { ...updatedLlm, polishLlmModel: null }
         setLlmSettings({ [config.name]: newValue, polishLlmModel: null })
+      } else if (
+        config.name === 'asrProvider' &&
+        typeof newValue === 'string'
+      ) {
+        // Auto-update asrModel when asrProvider changes
+        updatedLlm = { ...updatedLlm, asrModel: null }
+        setLlmSettings({ [config.name]: newValue, asrModel: null })
       } else {
         setLlmSettings({ [config.name]: newValue })
       }

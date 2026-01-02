@@ -5,17 +5,17 @@ import { HeaderValidator } from './HeaderValidator.js'
 describe('HeaderValidator', () => {
   describe('validateAsrModel', () => {
     it('should return valid ASR model names', () => {
-      expect(HeaderValidator.validateAsrModel('whisper-large-v3')).toBe(
-        'whisper-large-v3',
+      expect(HeaderValidator.validateAsrModel('whisper-large-v3-turbo')).toBe(
+        'whisper-large-v3-turbo',
       )
       expect(
-        HeaderValidator.validateAsrModel('distil-whisper-large-v3-en'),
-      ).toBe('distil-whisper-large-v3-en')
+        HeaderValidator.validateAsrModel('distil-whisper-large-v3-turbo-en'),
+      ).toBe('distil-whisper-large-v3-turbo-en')
     })
 
     it('should trim whitespace from ASR models', () => {
-      expect(HeaderValidator.validateAsrModel('  whisper-large-v3  ')).toBe(
-        'whisper-large-v3',
+      expect(HeaderValidator.validateAsrModel('  whisper-large-v3-turbo  ')).toBe(
+        'whisper-large-v3-turbo',
       )
     })
 

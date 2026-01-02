@@ -10,8 +10,9 @@ const LLM_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
 }
 
 const ASR_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
-  groq: 'whisper-large-v3',
+  groq: 'whisper-large-v3-turbo',
   aliyun: 'qwen3-asr-flash',
+  openai: 'whisper-1',
 }
 
 interface PlaygroundRunResult {

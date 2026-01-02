@@ -296,6 +296,7 @@ message AdvancedSettings {
   LlmSettings llm = 5;
   LlmSettings default = 6;
   map<string, string> llm_provider_default_models = 7;
+  map<string, string> asr_provider_default_models = 8;
 }
 
 message GetAdvancedSettingsRequest {

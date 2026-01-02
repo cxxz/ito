@@ -25,17 +25,17 @@ export function getDefaultAsrProvider(): string {
   return getNonEmptyEnv('ASR_PROVIDER') ?? DEFAULT_ADVANCED_SETTINGS.asrProvider
 }
 
-export function getDefaultAsrModel(asrProvider: string): string {
-  const envModel = getNonEmptyEnv('ASR_MODEL')
-  if (envModel) return envModel
-
-  switch (asrProvider) {
-    case 'aliyun':
-      return 'qwen3-asr-flash'
-    case 'groq':
-    default:
-      return DEFAULT_ADVANCED_SETTINGS.asrModel
+export function getProviderDefaultAsrModels(): Record<string, string> {
+  return {
+    groq: getNonEmptyEnv('GROQ_DEFAULT_ASR_MODEL') ?? 'whisper-large-v3-turbo',
+    aliyun: getNonEmptyEnv('ALIYUN_DEFAULT_ASR_MODEL') ?? 'qwen3-asr-flash',
+    openai: getNonEmptyEnv('OPENAI_DEFAULT_ASR_MODEL') ?? 'whisper-1',
   }
+}
+
+export function getDefaultAsrModel(asrProvider: string): string {
+  const providerDefaults = getProviderDefaultAsrModels()
+  return providerDefaults[asrProvider] ?? DEFAULT_ADVANCED_SETTINGS.asrModel
 }
 
 export function getDefaultAdvancedSettingsStruct() {

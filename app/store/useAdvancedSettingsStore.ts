@@ -24,6 +24,7 @@ interface AdvancedSettingsState {
   grammarServiceEnabled: boolean
   defaults?: LlmSettings
   llmProviderDefaultModels?: Record<string, string>
+  asrProviderDefaultModels?: Record<string, string>
   macosAccessibilityContextEnabled: boolean
   setLlmSettings: (settings: Partial<LlmSettings>) => void
   setGrammarServiceEnabled: (enabled: boolean) => void
@@ -42,6 +43,7 @@ const getInitialState = () => {
       storedAdvancedSettings.grammarServiceEnabled ?? false,
     defaults: storedAdvancedSettings.defaults,
     llmProviderDefaultModels: storedAdvancedSettings.llmProviderDefaultModels,
+    asrProviderDefaultModels: storedAdvancedSettings.asrProviderDefaultModels,
     macosAccessibilityContextEnabled:
       storedAdvancedSettings.macosAccessibilityContextEnabled ?? false,
   }

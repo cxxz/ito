@@ -142,8 +142,9 @@ class GroqClient implements LlmProvider {
       const segments = (transcription as any).segments
       if (segments && segments.length > 0) {
         const first = segments[0]
-        if (first?.no_speech_prob > noSpeechThreshold) {
-          console.log('No speech probability:', first.no_speech_prob)
+        console.log('No speech probability:', first?.no_speech_prob)
+        // Only check no_speech if threshold is > 0 (0 means disabled)
+        if (noSpeechThreshold > 0 && first?.no_speech_prob > noSpeechThreshold) {
           throw new ClientNoSpeechError(
             ClientProvider.GROQ,
             first.no_speech_prob,

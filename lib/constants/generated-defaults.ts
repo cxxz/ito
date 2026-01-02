@@ -7,7 +7,7 @@
 export const DEFAULT_ADVANCED_SETTINGS = {
   // ASR (Automatic Speech Recognition) settings
   asrProvider: 'groq',
-  asrModel: 'whisper-large-v3',
+  asrModel: 'whisper-large-v3-turbo',
   asrPrompt: ``,
 
   // LLM (Large Language Model) settings

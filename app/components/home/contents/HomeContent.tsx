@@ -730,11 +730,9 @@ export default function HomeContent() {
                         ? polishedTranscript
                         : ''
                     const hasPolishedText = polishedText.trim().length > 0
-                    const isExpandable =
-                      !displayInfo.isError && hasPolishedText
+                    const isExpandable = !displayInfo.isError && hasPolishedText
                     const isExpanded =
-                      isExpandable &&
-                      expandedInteractionIds.has(interaction.id)
+                      isExpandable && expandedInteractionIds.has(interaction.id)
                     const polishedCopyKey = `polished:${interaction.id}`
 
                     return (
@@ -917,7 +915,9 @@ export default function HomeContent() {
                                 }
                                 onOpenChange={open => {
                                   setOpenTooltipKey(
-                                    open ? `playground:${interaction.id}` : null,
+                                    open
+                                      ? `playground:${interaction.id}`
+                                      : null,
                                   )
                                 }}
                               >
@@ -1010,14 +1010,11 @@ export default function HomeContent() {
                               <span>Polished</span>
                               <Tooltip
                                 open={
-                                  openTooltipKey ===
-                                  `copy:${polishedCopyKey}`
+                                  openTooltipKey === `copy:${polishedCopyKey}`
                                 }
                                 onOpenChange={open => {
                                   if (open) {
-                                    setOpenTooltipKey(
-                                      `copy:${polishedCopyKey}`,
-                                    )
+                                    setOpenTooltipKey(`copy:${polishedCopyKey}`)
                                   } else {
                                     if (!copiedItems.has(polishedCopyKey)) {
                                       setOpenTooltipKey(prev =>

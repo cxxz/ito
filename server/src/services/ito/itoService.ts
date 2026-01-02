@@ -33,6 +33,7 @@ import { transcribeStreamHandler } from './transcribeStreamHandler.js'
 import {
   getDefaultAdvancedSettingsStruct,
   getProviderDefaultLlmModels,
+  getProviderDefaultAsrModels,
 } from './constants.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
 import {
@@ -119,8 +120,7 @@ function dbToAdvancedSettingsPb(
       // Convert null to undefined so protobuf omits unset optional fields
       asrModel,
       asrPrompt: toOptionalString(dbAdvancedSettings.llm.asr_prompt),
-      // ASR provider is controlled by server environment, not user settings.
-      asrProvider: undefined,
+      asrProvider: toOptionalString(dbAdvancedSettings.llm.asr_provider),
       llmProvider: toOptionalString(dbAdvancedSettings.llm.llm_provider),
       llmTemperature: dbAdvancedSettings.llm.llm_temperature ?? undefined,
       llmModel: toOptionalString(dbAdvancedSettings.llm.llm_model),
@@ -142,6 +142,7 @@ function dbToAdvancedSettingsPb(
     }),
     default: resolvedDefaults,
     llmProviderDefaultModels: getProviderDefaultLlmModels(),
+    asrProviderDefaultModels: getProviderDefaultAsrModels(),
   })
 }
 
@@ -346,6 +347,7 @@ export default (router: ConnectRouter) => {
           llm: create(LlmSettingsSchema, {}),
           default: getDefaultAdvancedSettingsStruct(),
           llmProviderDefaultModels: getProviderDefaultLlmModels(),
+          asrProviderDefaultModels: getProviderDefaultAsrModels(),
         })
       }
 

@@ -2,18 +2,18 @@ import { describe, expect, test } from 'bun:test'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
 import {
   getDefaultAdvancedSettingsStruct,
+  getDefaultAsrModel,
   getDefaultLlmModel,
+  getProviderDefaultAsrModels,
   getProviderDefaultLlmModels,
 } from './constants.js'
 
 describe('getDefaultAdvancedSettingsStruct', () => {
   test('uses ASR_PROVIDER to override defaults and selects provider default model', () => {
     const originalProvider = process.env.ASR_PROVIDER
-    const originalModel = process.env.ASR_MODEL
 
     try {
       process.env.ASR_PROVIDER = 'aliyun'
-      delete process.env.ASR_MODEL
 
       const defaults = getDefaultAdvancedSettingsStruct()
       expect(defaults.asrProvider).toBe('aliyun')
@@ -21,39 +21,34 @@ describe('getDefaultAdvancedSettingsStruct', () => {
     } finally {
       if (originalProvider === undefined) delete process.env.ASR_PROVIDER
       else process.env.ASR_PROVIDER = originalProvider
-
-      if (originalModel === undefined) delete process.env.ASR_MODEL
-      else process.env.ASR_MODEL = originalModel
     }
   })
 
-  test('uses ASR_MODEL to override provider default model', () => {
+  test('uses ALIYUN_DEFAULT_ASR_MODEL to override aliyun provider default model', () => {
     const originalProvider = process.env.ASR_PROVIDER
-    const originalModel = process.env.ASR_MODEL
+    const originalModel = process.env.ALIYUN_DEFAULT_ASR_MODEL
 
     try {
       process.env.ASR_PROVIDER = 'aliyun'
-      process.env.ASR_MODEL = 'custom-asr-model'
+      process.env.ALIYUN_DEFAULT_ASR_MODEL = 'custom-aliyun-asr-model'
 
       const defaults = getDefaultAdvancedSettingsStruct()
       expect(defaults.asrProvider).toBe('aliyun')
-      expect(defaults.asrModel).toBe('custom-asr-model')
+      expect(defaults.asrModel).toBe('custom-aliyun-asr-model')
     } finally {
       if (originalProvider === undefined) delete process.env.ASR_PROVIDER
       else process.env.ASR_PROVIDER = originalProvider
 
-      if (originalModel === undefined) delete process.env.ASR_MODEL
-      else process.env.ASR_MODEL = originalModel
+      if (originalModel === undefined) delete process.env.ALIYUN_DEFAULT_ASR_MODEL
+      else process.env.ALIYUN_DEFAULT_ASR_MODEL = originalModel
     }
   })
 
   test('falls back to generated defaults when ASR_PROVIDER is empty', () => {
     const originalProvider = process.env.ASR_PROVIDER
-    const originalModel = process.env.ASR_MODEL
 
     try {
       process.env.ASR_PROVIDER = '   '
-      delete process.env.ASR_MODEL
 
       const defaults = getDefaultAdvancedSettingsStruct()
       expect(defaults.asrProvider).toBe(DEFAULT_ADVANCED_SETTINGS.asrProvider)
@@ -61,9 +56,6 @@ describe('getDefaultAdvancedSettingsStruct', () => {
     } finally {
       if (originalProvider === undefined) delete process.env.ASR_PROVIDER
       else process.env.ASR_PROVIDER = originalProvider
-
-      if (originalModel === undefined) delete process.env.ASR_MODEL
-      else process.env.ASR_MODEL = originalModel
     }
   })
 
@@ -77,6 +69,68 @@ describe('getDefaultAdvancedSettingsStruct', () => {
     } finally {
       if (originalDefault === undefined) delete process.env.CEREBRAS_DEFAULT_LLM
       else process.env.CEREBRAS_DEFAULT_LLM = originalDefault
+    }
+  })
+})
+
+describe('getProviderDefaultAsrModels', () => {
+  test('uses GROQ_DEFAULT_ASR_MODEL when set', () => {
+    const originalDefault = process.env.GROQ_DEFAULT_ASR_MODEL
+    try {
+      process.env.GROQ_DEFAULT_ASR_MODEL = 'whisper-custom'
+      const defaults = getProviderDefaultAsrModels()
+      expect(defaults.groq).toBe('whisper-custom')
+    } finally {
+      if (originalDefault === undefined) delete process.env.GROQ_DEFAULT_ASR_MODEL
+      else process.env.GROQ_DEFAULT_ASR_MODEL = originalDefault
+    }
+  })
+
+  test('falls back to whisper-large-v3-turbo when GROQ_DEFAULT_ASR_MODEL is empty', () => {
+    const originalDefault = process.env.GROQ_DEFAULT_ASR_MODEL
+    try {
+      process.env.GROQ_DEFAULT_ASR_MODEL = '   '
+      const defaults = getProviderDefaultAsrModels()
+      expect(defaults.groq).toBe('whisper-large-v3-turbo')
+    } finally {
+      if (originalDefault === undefined) delete process.env.GROQ_DEFAULT_ASR_MODEL
+      else process.env.GROQ_DEFAULT_ASR_MODEL = originalDefault
+    }
+  })
+
+  test('uses ALIYUN_DEFAULT_ASR_MODEL when set', () => {
+    const originalDefault = process.env.ALIYUN_DEFAULT_ASR_MODEL
+    try {
+      process.env.ALIYUN_DEFAULT_ASR_MODEL = 'qwen-custom'
+      const defaults = getProviderDefaultAsrModels()
+      expect(defaults.aliyun).toBe('qwen-custom')
+    } finally {
+      if (originalDefault === undefined) delete process.env.ALIYUN_DEFAULT_ASR_MODEL
+      else process.env.ALIYUN_DEFAULT_ASR_MODEL = originalDefault
+    }
+  })
+})
+
+describe('getDefaultAsrModel', () => {
+  test('uses GROQ_DEFAULT_ASR_MODEL when set for groq provider', () => {
+    const originalDefault = process.env.GROQ_DEFAULT_ASR_MODEL
+    try {
+      process.env.GROQ_DEFAULT_ASR_MODEL = 'whisper-custom'
+      expect(getDefaultAsrModel('groq')).toBe('whisper-custom')
+    } finally {
+      if (originalDefault === undefined) delete process.env.GROQ_DEFAULT_ASR_MODEL
+      else process.env.GROQ_DEFAULT_ASR_MODEL = originalDefault
+    }
+  })
+
+  test('uses ALIYUN_DEFAULT_ASR_MODEL when set for aliyun provider', () => {
+    const originalDefault = process.env.ALIYUN_DEFAULT_ASR_MODEL
+    try {
+      process.env.ALIYUN_DEFAULT_ASR_MODEL = 'qwen-custom'
+      expect(getDefaultAsrModel('aliyun')).toBe('qwen-custom')
+    } finally {
+      if (originalDefault === undefined) delete process.env.ALIYUN_DEFAULT_ASR_MODEL
+      else process.env.ALIYUN_DEFAULT_ASR_MODEL = originalDefault
     }
   })
 })

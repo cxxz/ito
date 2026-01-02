@@ -40,7 +40,8 @@ ALIYUN_API_KEY=your_aliyun_api_key_here
 
 # Optional: ASR defaults (affects app "Settings > Advanced" defaults)
 ASR_PROVIDER="groq"  # Options: groq, aliyun
-ASR_MODEL=""         # Optional: override ASR model (e.g. "qwen3-asr-flash" for aliyun)
+GROQ_DEFAULT_ASR_MODEL=""    # defaults to whisper-large-v3-turbo
+ALIYUN_DEFAULT_ASR_MODEL=""  # defaults to qwen3-asr-flash
 
 # Optional: default LLM models per provider (affects app "Settings > Advanced" defaults)
 OPENAI_DEFAULT_LLM=""   # defaults to gpt-4o-mini
@@ -198,9 +199,10 @@ bun run test-client      # Run gRPC client tests
 | `OPENAI_API_KEY`       | No       | -                                  | OpenAI API key (enables OpenAI LLM provider)                    |
 | `ALIYUN_API_KEY`       | No       | -                                  | Aliyun API key (enables Aliyun ASR/LLM provider)                |
 | `OPENAI_BASE_URL`      | No       | `https://api.openai.com/v1`        | OpenAI-compatible API base URL                                  |
-| `ASR_PROVIDER`         | No       | `groq`                             | Default ASR provider (groq, aliyun)                             |
-| `ASR_MODEL`            | No       | provider default                   | Optional ASR model override                                     |
-| `OPENAI_DEFAULT_LLM`   | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`                 |
+| `ASR_PROVIDER`            | No       | `groq`                             | Default ASR provider (groq, aliyun)                             |
+| `GROQ_DEFAULT_ASR_MODEL`  | No       | `whisper-large-v3-turbo`                 | Default ASR model when ASR provider is `groq`                   |
+| `ALIYUN_DEFAULT_ASR_MODEL`| No       | `qwen3-asr-flash`                  | Default ASR model when ASR provider is `aliyun`                 |
+| `OPENAI_DEFAULT_LLM`      | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`                 |
 | `GROQ_DEFAULT_LLM`     | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`                   |
 | `CEREBRAS_DEFAULT_LLM` | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras`               |
 | `REQUIRE_AUTH`         | No       | `false`                            | Enable Auth0 authentication                                     |

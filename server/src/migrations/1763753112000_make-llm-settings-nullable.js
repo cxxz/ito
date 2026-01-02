@@ -72,7 +72,7 @@ export const up = pgm => {
   pgm.sql(`
     UPDATE llm_settings
     SET
-      asr_model = CASE WHEN asr_model = 'whisper-large-v3' THEN NULL ELSE asr_model END,
+      asr_model = CASE WHEN asr_model = 'whisper-large-v3-turbo' THEN NULL ELSE asr_model END,
       asr_provider = CASE WHEN asr_provider = 'groq' THEN NULL ELSE asr_provider END,
       asr_prompt = CASE WHEN asr_prompt = '' THEN NULL ELSE asr_prompt END,
       llm_provider = CASE WHEN llm_provider = 'groq' THEN NULL ELSE llm_provider END,
@@ -97,7 +97,7 @@ export const down = pgm => {
   pgm.sql(`
     UPDATE llm_settings
     SET
-      asr_model = COALESCE(asr_model, 'whisper-large-v3'),
+      asr_model = COALESCE(asr_model, 'whisper-large-v3-turbo'),
       asr_provider = COALESCE(asr_provider, 'groq'),
       asr_prompt = COALESCE(asr_prompt, ''),
       llm_provider = COALESCE(llm_provider, 'groq'),
@@ -111,7 +111,7 @@ export const down = pgm => {
 
   // Restore NOT NULL constraints and defaults
   pgm.alterColumn('llm_settings', 'asr_model', {
-    default: 'whisper-large-v3',
+    default: 'whisper-large-v3-turbo',
     notNull: true,
   })
 

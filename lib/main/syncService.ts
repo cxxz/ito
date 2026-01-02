@@ -10,7 +10,6 @@ import mainStore from './store'
 import { STORE_KEYS } from '../constants/store-keys'
 import type { AdvancedSettings } from './store'
 import { mainWindow } from './app'
-import { DEFAULT_ADVANCED_SETTINGS } from '../constants/generated-defaults.js'
 
 const LAST_SYNCED_AT_KEY = 'lastSyncedAt'
 
@@ -218,7 +217,7 @@ export class SyncService {
         ).rawAudioId
         const rawAudioId = hasRemoteRawAudioId
           ? remoteRawAudioId || null
-          : existingInteraction?.raw_audio_id ?? null
+          : (existingInteraction?.raw_audio_id ?? null)
 
         const hasRemoteSampleRate = Object.prototype.hasOwnProperty.call(
           remoteInteraction as object,
@@ -230,7 +229,7 @@ export class SyncService {
         const sampleRate =
           hasRemoteSampleRate && typeof remoteSampleRate === 'number'
             ? remoteSampleRate
-            : existingInteraction?.sample_rate ?? null
+            : (existingInteraction?.sample_rate ?? null)
 
         const localInteraction: Interaction = {
           id: remoteInteraction.id,
@@ -297,6 +296,7 @@ export class SyncService {
           ...currentLocalSettings,
           defaults: defaultSettings,
           llmProviderDefaultModels: remoteSettings.llmProviderDefaultModels,
+          asrProviderDefaultModels: remoteSettings.asrProviderDefaultModels,
         })
 
         // Notify UI of the update
@@ -306,55 +306,6 @@ export class SyncService {
           !mainWindow.webContents.isDestroyed()
         ) {
           mainWindow.webContents.send('advanced-settings-updated')
-        }
-
-        // Ensure local-only state doesn't override server-controlled defaults.
-        // - ASR provider is not user-configurable (read-only in UI): keep it unset so defaults display.
-        // - If ASR provider changes away from groq, clear legacy groq default model so provider defaults apply.
-        const updatedLocalSettings = mainStore.get(
-          STORE_KEYS.ADVANCED_SETTINGS,
-        ) as AdvancedSettings
-
-        let shouldNormalize = false
-        const normalizedLlm = { ...updatedLocalSettings.llm }
-
-        if (normalizedLlm.asrProvider !== null) {
-          normalizedLlm.asrProvider = null
-          shouldNormalize = true
-        }
-
-        if (typeof normalizedLlm.asrModel === 'string') {
-          const trimmed = normalizedLlm.asrModel.trim()
-          if (trimmed.length === 0) {
-            normalizedLlm.asrModel = null
-            shouldNormalize = true
-          }
-        }
-
-        const effectiveDefaultProvider =
-          defaultSettings.asrProvider ?? DEFAULT_ADVANCED_SETTINGS.asrProvider
-
-        if (
-          effectiveDefaultProvider !== DEFAULT_ADVANCED_SETTINGS.asrProvider &&
-          normalizedLlm.asrModel === DEFAULT_ADVANCED_SETTINGS.asrModel
-        ) {
-          normalizedLlm.asrModel = null
-          shouldNormalize = true
-        }
-
-        if (shouldNormalize) {
-          mainStore.set(STORE_KEYS.ADVANCED_SETTINGS, {
-            ...updatedLocalSettings,
-            llm: normalizedLlm,
-          })
-
-          if (
-            mainWindow &&
-            !mainWindow.isDestroyed() &&
-            !mainWindow.webContents.isDestroyed()
-          ) {
-            mainWindow.webContents.send('advanced-settings-updated')
-          }
         }
       }
 
@@ -399,6 +350,8 @@ export class SyncService {
           defaults: currentLocalSettings?.defaults,
           llmProviderDefaultModels:
             currentLocalSettings?.llmProviderDefaultModels,
+          asrProviderDefaultModels:
+            currentLocalSettings?.asrProviderDefaultModels,
           macosAccessibilityContextEnabled:
             currentLocalSettings.macosAccessibilityContextEnabled ?? false,
         }

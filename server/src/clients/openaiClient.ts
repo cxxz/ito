@@ -1,17 +1,25 @@
 import OpenAI from 'openai'
+import { toFile } from 'openai/uploads'
 import * as dotenv from 'dotenv'
 import {
   ClientApiKeyError,
   ClientUnavailableError,
   ClientApiError,
+  ClientModelError,
+  ClientNoSpeechError,
+  ClientAudioTooShortError,
+  ClientError,
 } from './errors.js'
 import { ClientProvider } from './providers.js'
 import { LlmProvider } from './llmProvider.js'
 import { TranscriptionOptions } from './asrConfig.js'
 import { IntentTranscriptionOptions } from './intentTranscriptionConfig.js'
+import { createTranscriptionPrompt } from '../prompts/transcription.js'
 
 // Load environment variables from .env file
 dotenv.config()
+
+export const itoVocabulary = ['Ito', 'Hey Ito']
 
 const DEFAULT_OPENAI_MODEL = 'gpt-5-mini'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
@@ -95,26 +103,81 @@ class OpenaiClient implements LlmProvider {
 
   /**
    * Transcribes an audio buffer using the OpenAI API.
-   * Note: This implementation throws an error as audio transcription is handled by ASR providers.
-   * @param _audioBuffer The audio data as a Node.js Buffer.
-   * @param _options Optional transcription configuration.
+   * @param audioBuffer The audio data as a Node.js Buffer.
+   * @param options Optional transcription configuration.
    * @returns The transcribed text as a string.
    */
   public async transcribeAudio(
-    _audioBuffer: Buffer,
-    _options?: TranscriptionOptions,
+    audioBuffer: Buffer,
+    options?: TranscriptionOptions,
   ): Promise<string> {
+    console.log('Transcribing audio with OpenAI, options:', options)
+    const fileType = options?.fileType || 'webm'
+    const asrModel = options?.asrModel
+    const vocabulary = options?.vocabulary
+    // const noSpeechThreshold =
+    //   options?.noSpeechThreshold ?? DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold
+
+    const file = await toFile(audioBuffer, `audio.${fileType}`)
     if (!this.isAvailable) {
       throw new ClientUnavailableError(ClientProvider.OPENAI)
     }
+    if (!asrModel) {
+      throw new ClientModelError(ClientProvider.OPENAI)
+    }
 
-    // OpenAI transcription is not supported in this client - use ASR providers instead
-    throw new ClientApiError(
-      'Audio transcription is not supported by the OpenAI LLM client. Please use a different ASR provider.',
-      ClientProvider.OPENAI,
-      new Error('Feature not supported'),
-      501, // Not Implemented
-    )
+    try {
+      console.log(
+        `Transcribing ${audioBuffer.length} bytes of audio using OpenAI model ${asrModel}...`,
+      )
+
+      const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
+      const transcriptionPrompt = createTranscriptionPrompt(fullVocabulary)
+
+      const transcription = await this._client.audio.transcriptions.create({
+        file,
+        model: asrModel,
+        prompt: transcriptionPrompt,
+        response_format: 'json',
+      })
+
+      // const segments = (transcription as any).segments
+      // if (segments && segments.length > 0) {
+      //   const first = segments[0]
+      //   console.log('No speech probability:', first?.no_speech_prob)
+      //   // Only check no_speech if threshold is > 0 (0 means disabled)
+      //   if (noSpeechThreshold > 0 && first?.no_speech_prob > noSpeechThreshold) {
+      //     throw new ClientNoSpeechError(
+      //       ClientProvider.OPENAI,
+      //       first.no_speech_prob,
+      //     )
+      //   }
+      // }
+
+      return transcription.text.trim()
+    } catch (error: any) {
+      console.log(
+        `Failed to transcribe audio of size ${audioBuffer.length} bytes with OpenAI.`,
+      )
+      console.error('An error occurred during OpenAI transcription:', error)
+      if (error instanceof ClientError) {
+        throw error
+      }
+
+      const errorMessage = error.message || 'An unknown error occurred'
+
+      // Check for specific audio too short error
+      if (errorMessage.includes('Audio file is too short')) {
+        throw new ClientAudioTooShortError(ClientProvider.OPENAI)
+      }
+
+      throw new ClientApiError(
+        errorMessage,
+        ClientProvider.OPENAI,
+        error,
+        error.status || error.statusCode,
+      )
+    }
   }
 }
 

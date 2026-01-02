@@ -334,14 +334,14 @@ describe('itoSessionManager', () => {
     await session.completeSession()
 
     expect(mockTextInserter.insertText).toHaveBeenCalledWith(mockTranscript)
-    expect(mockInteractionManager.upsertInteractionFromServer).toHaveBeenCalledWith(
-      {
-        responseTranscript: mockTranscript,
-        audioBuffer: Buffer.from('audio-data'),
-        sampleRate: 16000,
-        mode: ItoMode.TRANSCRIBE,
-      },
-    )
+    expect(
+      mockInteractionManager.upsertInteractionFromServer,
+    ).toHaveBeenCalledWith({
+      responseTranscript: mockTranscript,
+      audioBuffer: Buffer.from('audio-data'),
+      sampleRate: 16000,
+      mode: ItoMode.TRANSCRIBE,
+    })
     expect(mockItoStreamController.endInteraction).toHaveBeenCalled()
     expect(mockInteractionManager.clearCurrentInteraction).toHaveBeenCalled()
   })

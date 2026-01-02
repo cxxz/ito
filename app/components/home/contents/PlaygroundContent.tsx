@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip'
 import { usePlaygroundStore } from '../../../store/usePlaygroundStore'
 import { createStereo48kWavFromMonoPCM } from '@/app/utils/audioUtils'
 
-const ASR_PROVIDER_OPTIONS = ['groq', 'aliyun']
+const ASR_PROVIDER_OPTIONS = ['groq', 'aliyun', 'openai']
 const POLISH_PROVIDER_OPTIONS = ['groq', 'cerebras', 'openai']
 
 export default function PlaygroundContent() {
@@ -130,7 +130,11 @@ export default function PlaygroundContent() {
     let audioBlob: Blob
     if (interactionId) {
       const pcmData = new Uint8Array(audioBuffer)
-      const wavBuffer = createStereo48kWavFromMonoPCM(pcmData, sampleRate, 48000)
+      const wavBuffer = createStereo48kWavFromMonoPCM(
+        pcmData,
+        sampleRate,
+        48000,
+      )
       audioBlob = new Blob([wavBuffer], { type: 'audio/wav' })
     } else {
       audioBlob = new Blob([audioBuffer], { type: 'audio/wav' })
@@ -341,7 +345,7 @@ export default function PlaygroundContent() {
                 type="text"
                 value={asrModel}
                 onChange={e => setAsrModel(e.target.value)}
-                placeholder="whisper-large-v3"
+                placeholder="whisper-large-v3-turbo"
                 className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
