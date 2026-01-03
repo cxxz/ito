@@ -16,6 +16,9 @@ A Rust-based global keyboard event listener that captures and blocks keyboard ev
 The key listener can be controlled through stdin commands in JSON format:
 
 ```json
+// Register hotkeys (blocks exact matches)
+{"command": "register_hotkeys", "hotkeys": [{"keys": ["MetaLeft", "Space"]}]}
+
 // Block specific keys
 {"command": "block", "keys": ["KeyA", "KeyB", "KeyC"]}
 
@@ -80,10 +83,11 @@ When integrating with Electron:
 The key listener uses standard key names that match the `rdev` library's Key enum. Common examples:
 
 - `KeyA` through `KeyZ` for letter keys
-- `Digit1` through `Digit9` for number keys
+- `Num1` through `Num9` for number keys
 - `Function` for the fn key (macOS)
 - `ShiftLeft`, `ShiftRight` for modifier keys
-- `Space`, `Enter`, `Escape` for special keys
+- `Space`, `Return`, `Escape` for special keys
+- `UpArrow`, `DownArrow`, `LeftArrow`, `RightArrow` for arrow keys
 
 ## Notes
 

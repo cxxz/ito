@@ -86,6 +86,7 @@ mock.module('@connectrpc/connect', () => ({
 
 mock.module('@connectrpc/connect-node', () => ({
   createConnectTransport: mock(() => ({})),
+  Http2SessionManager: class MockHttp2SessionManager {},
 }))
 
 mock.module('@bufbuild/protobuf', () => ({
@@ -102,6 +103,7 @@ mock.module('@/app/generated/ito_pb', () => ({
   DeleteNoteRequestSchema: { typeName: 'DeleteNoteRequest' },
   ListNotesRequestSchema: { typeName: 'ListNotesRequest' },
   CreateInteractionRequestSchema: { typeName: 'CreateInteractionRequest' },
+  GetInteractionRequestSchema: { typeName: 'GetInteractionRequest' },
   UpdateInteractionRequestSchema: { typeName: 'UpdateInteractionRequest' },
   DeleteInteractionRequestSchema: { typeName: 'DeleteInteractionRequest' },
   ListInteractionsRequestSchema: { typeName: 'ListInteractionsRequest' },
@@ -121,6 +123,10 @@ mock.module('@/app/generated/ito_pb', () => ({
   },
   GetAdvancedSettingsRequestSchema: { typeName: 'GetAdvancedSettingsRequest' },
   SubmitTimingReportsRequestSchema: { typeName: 'SubmitTimingReportsRequest' },
+  PlaygroundRunRequestSchema: { typeName: 'PlaygroundRunRequest' },
+  PlaygroundRunResponse: { typeName: 'PlaygroundRunResponse' },
+  PlaygroundPolishRequestSchema: { typeName: 'PlaygroundPolishRequest' },
+  PlaygroundPolishResponse: { typeName: 'PlaygroundPolishResponse' },
   TranscribeStreamRequest: { typeName: 'TranscribeStreamRequest' },
   TranscribeStreamResponse: { typeName: 'TranscribeStreamResponse' },
   TranscribePhase: { PHASE_COMPLETE: 0 },

@@ -11,7 +11,7 @@ export const keyNameMap: Record<string, KeyName> = {
   ShiftLeft: 'shift-left',
   ShiftRight: 'shift-right',
   Function: 'fn',
-  'Unknown(179)': 'fn_fast',
+  'Unknown(179)': 'fn',
   KeyA: 'a',
   KeyB: 'b',
   KeyC: 'c',
@@ -38,27 +38,27 @@ export const keyNameMap: Record<string, KeyName> = {
   KeyX: 'x',
   KeyY: 'y',
   KeyZ: 'z',
-  Digit1: '1',
-  Digit2: '2',
-  Digit3: '3',
-  Digit4: '4',
-  Digit5: '5',
-  Digit6: '6',
-  Digit7: '7',
-  Digit8: '8',
-  Digit9: '9',
-  Digit0: '0',
+  Num1: '1',
+  Num2: '2',
+  Num3: '3',
+  Num4: '4',
+  Num5: '5',
+  Num6: '6',
+  Num7: '7',
+  Num8: '8',
+  Num9: '9',
+  Num0: '0',
   Space: 'space',
-  Enter: 'enter',
+  Return: 'enter',
   Escape: 'esc',
   Backspace: 'backspace',
   Tab: 'tab',
   CapsLock: 'caps',
   Delete: 'delete',
-  ArrowUp: '↑',
-  ArrowDown: '↓',
-  ArrowLeft: '←',
-  ArrowRight: '→',
+  UpArrow: '↑',
+  DownArrow: '↓',
+  LeftArrow: '←',
+  RightArrow: '→',
 }
 
 export type ModifierKey =
@@ -71,7 +71,6 @@ export type ModifierKey =
   | 'shift-left'
   | 'shift-right'
   | 'fn'
-  | 'fn_fast'
 
 export type RegularKey =
   | 'a'

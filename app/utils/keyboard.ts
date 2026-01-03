@@ -303,11 +303,6 @@ export class KeyState {
     // Use keyNameMap for proper directional key preservation
     const key = keyNameMap[event.key] || event.key.toLowerCase()
 
-    // Handle Function key special case
-    if (key === 'fn_fast') {
-      return
-    }
-
     if (event.type === 'keydown') {
       this.pressedKeys.add(key)
     } else if (event.type === 'keyup') {

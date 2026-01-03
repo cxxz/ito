@@ -5,6 +5,7 @@ use rdev::{grab, simulate, Event, EventType, Key};
 use rdev::{grab, Event, EventType, Key};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -29,6 +30,12 @@ struct HotkeyCombo {
 enum Command {
     #[serde(rename = "register_hotkeys")]
     RegisterHotkeys { hotkeys: Vec<HotkeyCombo> },
+    #[serde(rename = "block")]
+    Block { keys: Vec<String> },
+    #[serde(rename = "unblock")]
+    Unblock { key: String },
+    #[serde(rename = "get_blocked")]
+    GetBlocked,
 }
 
 #[derive(Default)]
@@ -38,12 +45,33 @@ struct ListenerState {
     cmd_pressed: bool,
     ctrl_pressed: bool,
     copy_in_progress: bool,
+    blocked_keys: HashSet<String>,
 }
 
 static LISTENER_STATE: OnceLock<Mutex<ListenerState>> = OnceLock::new();
 
 fn listener_state() -> &'static Mutex<ListenerState> {
     LISTENER_STATE.get_or_init(|| Mutex::new(ListenerState::default()))
+}
+
+fn normalize_key_name(key: &str) -> String {
+    if key == "Unknown(179)" {
+        "Function".to_string()
+    } else {
+        key.to_string()
+    }
+}
+
+fn normalize_key_list(keys: Vec<String>) -> Vec<String> {
+    let mut unique = HashSet::new();
+    let mut normalized = Vec::new();
+    for key in keys {
+        let normalized_key = normalize_key_name(&key);
+        if unique.insert(normalized_key.clone()) {
+            normalized.push(normalized_key);
+        }
+    }
+    normalized
 }
 
 /// Prevents macOS App Nap from suspending this process.
@@ -116,8 +144,38 @@ fn handle_command(command: Command) {
     match command {
         Command::RegisterHotkeys { hotkeys } => {
             if let Ok(mut state) = listener_state().lock() {
-                state.registered_hotkeys = hotkeys;
+                state.registered_hotkeys = hotkeys
+                    .into_iter()
+                    .map(|hotkey| HotkeyCombo {
+                        keys: normalize_key_list(hotkey.keys),
+                    })
+                    .collect();
             }
+        }
+        Command::Block { keys } => {
+            if let Ok(mut state) = listener_state().lock() {
+                for key in normalize_key_list(keys) {
+                    state.blocked_keys.insert(key);
+                }
+            }
+        }
+        Command::Unblock { key } => {
+            if let Ok(mut state) = listener_state().lock() {
+                state.blocked_keys.remove(&normalize_key_name(&key));
+            }
+        }
+        Command::GetBlocked => {
+            let keys = if let Ok(state) = listener_state().lock() {
+                state.blocked_keys.iter().cloned().collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+
+            let blocked_json = json!({
+                "type": "blocked_keys",
+                "keys": keys
+            });
+            println!("{}", blocked_json);
         }
     }
     let _ = io::stdout().flush();
@@ -149,18 +207,19 @@ fn callback(event: Event) -> Option<Event> {
             // feedback loops with selected-text-reader
             // Update pressed keys BEFORE checking if we should block
             // Normalize Unknown(179) to Function for detection purposes
-            let normalized_key = if key_name == "Unknown(179)" {
-                "Function".to_string()
-            } else {
-                key_name.clone()
-            };
+            let normalized_key = normalize_key_name(&key_name);
 
-            let (should_block_event, should_block_unknown_179, _needs_windows_poison) = {
+            let (should_block_event, should_block_unknown_179, should_block_key, _needs_windows_poison) = {
                 let mut state = listener_state()
                     .lock()
                     .expect("Listener state mutex poisoned");
 
-                if matches!(key, Key::KeyC) && (state.cmd_pressed || state.ctrl_pressed) {
+                let should_block_key = state.blocked_keys.contains(&normalized_key);
+
+                if matches!(key, Key::KeyC)
+                    && (state.cmd_pressed || state.ctrl_pressed)
+                    && !should_block_key
+                {
                     state.copy_in_progress = true;
                     // Still pass through the event to the system but don't output it to our
                     // listener.
@@ -198,14 +257,19 @@ fn callback(event: Event) -> Option<Event> {
                 #[cfg(not(target_os = "windows"))]
                 let _needs_windows_poison = false;
 
-                (should_block_event, should_block_unknown_179, _needs_windows_poison)
+                (
+                    should_block_event,
+                    should_block_unknown_179,
+                    should_block_key,
+                    _needs_windows_poison,
+                )
             };
 
             output_event("keydown", &key);
 
             // Check if we should block based on exact hotkey match
             #[allow(clippy::if_same_then_else)]
-            if should_block_event {
+            if should_block_event || should_block_key {
                 // Windows-specific: Prevent Start menu from opening when Windows key is used in
                 // hotkeys Windows shows the Start menu if it sees "Win down →
                 // Win up" with no other keys in between. By injecting a
@@ -228,11 +292,7 @@ fn callback(event: Event) -> Option<Event> {
             let key_name = format!("{:?}", key);
 
             // Normalize Unknown(179) to Function for detection purposes
-            let normalized_key = if key_name == "Unknown(179)" {
-                "Function".to_string()
-            } else {
-                key_name.clone()
-            };
+            let normalized_key = normalize_key_name(&key_name);
 
             {
                 let mut state = listener_state()

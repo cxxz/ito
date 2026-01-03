@@ -63,9 +63,9 @@ describe('KeyState', () => {
       expect(keyState.isKeyPressed('a')).toBe(false)
     })
 
-    test('should ignore fn_fast events', () => {
+    test('should track fn events from Unknown(179)', () => {
       keyState.update({ key: 'Unknown(179)', type: 'keydown' } as KeyEvent)
-      expect(keyState.getPressedKeys()).toEqual([])
+      expect(keyState.getPressedKeys()).toContain('fn')
     })
 
     test('should track multiple keys', () => {

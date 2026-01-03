@@ -75,10 +75,6 @@ export default function KeyboardShortcutEditor({
         // In edit mode, handle adding/removing keys
         if (event.type === 'keydown') {
           const normalizedKey = keyNameMap[event.key] || event.key.toLowerCase()
-          if (normalizedKey === 'fn_fast') {
-            return
-          }
-
           let updatedShortcut: KeyName[]
           if (!newShortcut.includes(normalizedKey)) {
             // Check if we're at the limit before adding

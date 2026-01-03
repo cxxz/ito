@@ -5,7 +5,7 @@ interface KeyEvent {
   type: 'keydown' | 'keyup'
   key: string
   timestamp: string
-  raw_code: number
+  raw_code: number | null
 }
 
 interface StoreAPI {
@@ -50,7 +50,7 @@ declare global {
       stopNativeRecording: () => Promise<void>
       blockKeys: (keys: string[]) => Promise<void>
       unblockKey: (key: string) => Promise<void>
-      getBlockedKeys: () => Promise<void>
+      getBlockedKeys: () => Promise<string[]>
       onKeyEvent: (callback: (event: KeyEvent) => void) => void
       send: (channel: string, data: any) => void
       on: (channel: string, callback: (...args: any[]) => void) => () => void

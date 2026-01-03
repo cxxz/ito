@@ -14,9 +14,11 @@ import { getUpdateStatus, installUpdateNow } from '../main/autoUpdaterWrapper'
 
 import {
   startKeyListener,
-  KeyListenerProcess,
   stopKeyListener,
   registerAllHotkeys,
+  blockKeys,
+  unblockKey,
+  getBlockedKeys,
 } from '../media/keyboard'
 import { getPillWindow, mainWindow } from '../main/app'
 import { KeyValueStore } from '../main/sqlite/repo'
@@ -50,6 +52,9 @@ export function registerIPC() {
   })
   ipcMain.on('electron-store-set', (_event, key, val) => {
     store.set(key, val)
+    if (key === 'settings.isShortcutGloballyEnabled') {
+      registerAllHotkeys()
+    }
   })
 
   ipcMain.on('audio-devices-changed', () => {
@@ -139,23 +144,12 @@ export function registerIPC() {
     itoSessionManager.completeSession(),
   )
   handleIPC('block-keys', (_e, keys: string[]) => {
-    if (KeyListenerProcess)
-      KeyListenerProcess.stdin?.write(
-        JSON.stringify({ command: 'block', keys }) + '\n',
-      )
+    blockKeys(keys)
   })
   handleIPC('unblock-key', (_e, key: string) => {
-    if (KeyListenerProcess)
-      KeyListenerProcess.stdin?.write(
-        JSON.stringify({ command: 'unblock', key }) + '\n',
-      )
+    unblockKey(key)
   })
-  handleIPC('get-blocked-keys', () => {
-    if (KeyListenerProcess)
-      KeyListenerProcess.stdin?.write(
-        JSON.stringify({ command: 'get_blocked' }) + '\n',
-      )
-  })
+  handleIPC('get-blocked-keys', () => getBlockedKeys())
 
   // Permissions
   handleIPC('check-accessibility-permission', (_e, prompt: boolean = false) =>

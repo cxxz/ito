@@ -152,7 +152,7 @@ const KeyToRender = ({
   showDirectionalText?: boolean
   platform?: 'darwin' | 'win32'
 }) => {
-  if (keyboardKey === 'fn' || keyboardKey === 'fn_fast') {
+  if (keyboardKey === 'fn') {
     return <FnKey />
   }
 

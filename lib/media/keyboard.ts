@@ -10,7 +10,7 @@ interface KeyEvent {
   type: 'keydown' | 'keyup'
   key: string
   timestamp: string
-  raw_code: number
+  raw_code: number | null
 }
 
 interface HeartbeatEvent {
@@ -24,7 +24,16 @@ interface RegisteredHotkeysEvent {
   hotkeys: Array<{ keys: string[] }>
 }
 
-type ProcessEvent = KeyEvent | HeartbeatEvent | RegisteredHotkeysEvent
+interface BlockedKeysEvent {
+  type: 'blocked_keys'
+  keys: string[]
+}
+
+type ProcessEvent =
+  | KeyEvent
+  | HeartbeatEvent
+  | RegisteredHotkeysEvent
+  | BlockedKeysEvent
 
 // Global key listener process singleton
 export let KeyListenerProcess: ReturnType<typeof spawn> | null = null
@@ -42,6 +51,7 @@ export const resetForTesting = () => {
   if (process.env.NODE_ENV !== 'production') {
     KeyListenerProcess = null
     activeShortcutId = null
+    blockedKeys.clear()
     pressedKeys.clear()
     keyPressTimestamps.clear()
     stopStuckKeyChecker()
@@ -113,6 +123,7 @@ function restartKeyListener() {
 
 // This set will track the state of all currently pressed keys.
 const pressedKeys = new Set<string>()
+const blockedKeys = new Set<string>()
 
 // Track when each key was first pressed to detect stuck keys
 const keyPressTimestamps = new Map<KeyName, number>()
@@ -304,9 +315,6 @@ async function handleKeyEventInMain(event: KeyEvent) {
 
   const normalizedKey = normalizeKey(event.key)
 
-  // Ignore the "fast fn" event which can be noisy.
-  if (normalizedKey === 'fn_fast') return
-
   if (event.type === 'keydown') {
     pressedKeys.add(normalizedKey)
     // Track when this key was first pressed (only if not already tracked)
@@ -418,14 +426,11 @@ export const startKeyListener = () => {
     KeyListenerProcess = spawn(binaryPath, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
-      detached: true,
     })
 
     if (!KeyListenerProcess) {
       throw new Error('Failed to spawn process')
     }
-
-    KeyListenerProcess.unref()
 
     let buffer = ''
     KeyListenerProcess.stdout?.on('data', data => {
@@ -445,6 +450,8 @@ export const startKeyListener = () => {
             } else if (event.type === 'registered_hotkeys') {
               // Log registered hotkeys for debugging
               console.info('🔒 Registered hotkeys received:', event.hotkeys)
+              continue
+            } else if (event.type === 'blocked_keys') {
               continue
             }
 
@@ -495,6 +502,9 @@ export const startKeyListener = () => {
     // Register all configured hotkeys with the listener
     registerAllHotkeys()
 
+    // Reapply blocked keys if any were set before listener start.
+    registerBlockedKeys()
+
     // Start the stuck key checker
     startStuckKeyChecker()
 
@@ -515,7 +525,16 @@ export const registerAllHotkeys = () => {
     return
   }
 
-  const { keyboardShortcuts } = store.get(STORE_KEYS.SETTINGS)
+  const { isShortcutGloballyEnabled, keyboardShortcuts } = store.get(
+    STORE_KEYS.SETTINGS,
+  )
+
+  if (!isShortcutGloballyEnabled) {
+    KeyListenerProcess.stdin?.write(
+      JSON.stringify({ command: 'register_hotkeys', hotkeys: [] }) + '\n',
+    )
+    return
+  }
 
   // Convert shortcuts to hotkey format for the listener
   const hotkeys = keyboardShortcuts
@@ -528,6 +547,16 @@ export const registerAllHotkeys = () => {
 
   KeyListenerProcess.stdin?.write(
     JSON.stringify({ command: 'register_hotkeys', hotkeys }) + '\n',
+  )
+}
+
+const registerBlockedKeys = () => {
+  if (!KeyListenerProcess || blockedKeys.size === 0) {
+    return
+  }
+
+  KeyListenerProcess.stdin?.write(
+    JSON.stringify({ command: 'block', keys: [...blockedKeys] }) + '\n',
   )
 }
 
@@ -570,17 +599,21 @@ const getKeysToRegister = (shortcut?: KeyboardShortcutConfig): string[] => {
     }
   }
 
-  // Also block the special "fast fn" key if fn is part of the shortcut.
-  if (shortcut.keys.includes('fn')) {
-    keys.push('Unknown(179)')
-  }
-
   // Return a unique set of keys.
   return [...new Set(keys)]
 }
 
 export const stopKeyListener = () => {
   if (KeyListenerProcess) {
+    if (activeShortcutId !== null || doubleTapState.isRecording) {
+      activeShortcutId = null
+      doubleTapState.isRecording = false
+      doubleTapState.lastTapTime = 0
+      doubleTapState.lastKey = null
+      activeTaps.clear()
+      itoSessionManager.completeSession()
+    }
+
     // Clear the set on stop to prevent stuck keys if the app restarts.
     pressedKeys.clear()
     keyPressTimestamps.clear()
@@ -593,3 +626,27 @@ export const stopKeyListener = () => {
     KeyListenerProcess = null
   }
 }
+
+export const blockKeys = (keys: string[]) => {
+  if (keys.length === 0) {
+    return
+  }
+
+  keys.forEach(key => blockedKeys.add(key))
+  registerBlockedKeys()
+}
+
+export const unblockKey = (key: string) => {
+  if (!blockedKeys.has(key)) {
+    return
+  }
+
+  blockedKeys.delete(key)
+  if (KeyListenerProcess) {
+    KeyListenerProcess.stdin?.write(
+      JSON.stringify({ command: 'unblock', key }) + '\n',
+    )
+  }
+}
+
+export const getBlockedKeys = () => [...blockedKeys]

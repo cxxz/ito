@@ -588,7 +588,18 @@ describe('Keyboard Module', () => {
       )
     })
 
-    test('should ignore fast fn key events', async () => {
+    test('should treat Unknown(179) as fn for shortcut detection', async () => {
+      mockMainStore.get.mockReturnValue({
+        isShortcutGloballyEnabled: true,
+        keyboardShortcuts: [
+          {
+            id: 'fn-test',
+            keys: ['fn'],
+            mode: ItoMode.TRANSCRIBE,
+          },
+        ],
+      })
+
       // Create fresh mock objects for this test to avoid isolation issues
       const freshMockWindow = {
         webContents: {
@@ -620,10 +631,13 @@ describe('Keyboard Module', () => {
           Buffer.from(JSON.stringify(fastFnEvent) + '\n'),
         )
 
-        // Should still forward to windows but not affect shortcut state
+        // Should still forward to windows and trigger shortcut detection
         expect(freshMockWindow.webContents.send).toHaveBeenCalledWith(
           'key-event',
           fastFnEvent,
+        )
+        expect(mockitoSessionManager.startSession).toHaveBeenCalledWith(
+          ItoMode.TRANSCRIBE,
         )
       } finally {
         // Restore original mock
@@ -1052,15 +1066,15 @@ describe('Keyboard Module', () => {
       const { startKeyListener } = await import('./keyboard')
       startKeyListener()
 
-      const digit1Down = {
+      const num1Down = {
         type: 'keydown',
-        key: 'Digit1',
+        key: 'Num1',
         timestamp: '2024-01-01T00:00:00.000Z',
         raw_code: 49,
       }
       mockChildProcess.stdout.emit(
         'data',
-        Buffer.from(JSON.stringify(digit1Down) + '\n'),
+        Buffer.from(JSON.stringify(num1Down) + '\n'),
       )
 
       expect(mockitoSessionManager.startSession).toHaveBeenCalled()

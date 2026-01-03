@@ -137,8 +137,6 @@ export default function MultiShortcutEditor({
     (event: any) => {
       if (!editingId || event.type !== 'keydown') return
       const key = keyNameMap[event.key] || event.key.toLowerCase()
-      if (key === 'fn_fast') return
-
       setDraftKeys(prev => {
         // If key exists, remove it
         if (prev.includes(key)) {

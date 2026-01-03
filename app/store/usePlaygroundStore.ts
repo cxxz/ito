@@ -234,9 +234,7 @@ export const usePlaygroundStore = create<PlaygroundStore>((set, get) => ({
     const serverDefaults = appState.asrProviderDefaultModels
     // Use server defaults if available, otherwise fall back to hardcoded
     const defaultModel =
-      serverDefaults?.[provider] ||
-      ASR_PROVIDER_DEFAULT_MODELS[provider] ||
-      ''
+      serverDefaults?.[provider] || ASR_PROVIDER_DEFAULT_MODELS[provider] || ''
     set({
       asrProvider: provider,
       // Set model to the default for the new provider
@@ -258,9 +256,7 @@ export const usePlaygroundStore = create<PlaygroundStore>((set, get) => ({
     const serverDefaults = appState.llmProviderDefaultModels
     // Use server defaults if available, otherwise fall back to hardcoded
     const defaultModel =
-      serverDefaults?.[provider] ||
-      LLM_PROVIDER_DEFAULT_MODELS[provider] ||
-      ''
+      serverDefaults?.[provider] || LLM_PROVIDER_DEFAULT_MODELS[provider] || ''
     set({
       polishLlmProvider: provider,
       // Set model to the default for the new provider
