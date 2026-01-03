@@ -32,6 +32,7 @@ let activeShortcutId: string | null = null
 
 // Heartbeat monitoring state
 let lastHeartbeatReceived = Date.now()
+let lastHeartbeatCheck = Date.now()
 let heartbeatCheckTimer: NodeJS.Timeout | null = null
 const HEARTBEAT_CHECK_INTERVAL_MS = 5000 // Check every 5 seconds
 const HEARTBEAT_TIMEOUT_MS = 15000 // 15 seconds without heartbeat triggers restart
@@ -46,6 +47,7 @@ export const resetForTesting = () => {
     stopStuckKeyChecker()
     stopHeartbeatChecker()
     lastHeartbeatReceived = Date.now()
+    lastHeartbeatCheck = lastHeartbeatReceived
     // Reset double-tap state
     doubleTapState.lastTapTime = 0
     doubleTapState.lastKey = null
@@ -71,8 +73,18 @@ function handleHeartbeat(_event: HeartbeatEvent) {
 
 function startHeartbeatChecker() {
   if (!heartbeatCheckTimer) {
+    lastHeartbeatCheck = Date.now()
     heartbeatCheckTimer = setInterval(() => {
-      const timeSinceLastHeartbeat = Date.now() - lastHeartbeatReceived
+      const now = Date.now()
+      const timeSinceLastCheck = now - lastHeartbeatCheck
+      lastHeartbeatCheck = now
+
+      if (timeSinceLastCheck > HEARTBEAT_TIMEOUT_MS) {
+        lastHeartbeatReceived = now
+        return
+      }
+
+      const timeSinceLastHeartbeat = now - lastHeartbeatReceived
       if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
         console.error(
           `[Key listener] No heartbeat received for ${timeSinceLastHeartbeat}ms, restarting key listener...`,
@@ -488,6 +500,7 @@ export const startKeyListener = () => {
 
     // Start heartbeat monitoring
     lastHeartbeatReceived = Date.now()
+    lastHeartbeatCheck = lastHeartbeatReceived
     startHeartbeatChecker()
   } catch (error) {
     console.error('Failed to start key listener:', error)
