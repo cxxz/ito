@@ -40,6 +40,7 @@ const mockItoStreamController = {
       sampleRate: 16000,
     }),
   ),
+  isStreaming: mock(() => true),
   setMode: mock(),
   getCurrentMode: mock(() => ItoMode.TRANSCRIBE),
   scheduleConfigUpdate: mock(() => Promise.resolve()),
@@ -161,6 +162,7 @@ describe('itoSessionManager', () => {
       audioBuffer: Buffer.from('audio-data'),
       sampleRate: 16000,
     })
+    mockItoStreamController.isStreaming.mockReturnValue(true)
     mockItoStreamController.getAudioDurationMs.mockReturnValue(1000)
     mockItoStreamController.getInteractionAudioBuffer.mockReturnValue(
       Buffer.from('audio-data'),

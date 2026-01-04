@@ -53,11 +53,16 @@ export class ItoSessionManager {
         recordingStateNotifier.notifyEditingStarted()
       }
     })
+    const streamPromise = this.streamResponsePromise
     this.streamResponsePromise.catch(error => {
       console.error(
         '[itoSessionManager] Stream failed before completion:',
         error,
       )
+      if (this.streamResponsePromise !== streamPromise) {
+        return
+      }
+      void this.handleStreamFailureDuringRecording(error)
     })
 
     // Begin recording audio (audio bytes will now flow into the gRPC stream)
@@ -98,6 +103,50 @@ export class ItoSessionManager {
         error,
       )
     })
+  }
+
+  private async handleStreamFailureDuringRecording(error: unknown) {
+    try {
+      if (!itoStreamController.isStreaming()) {
+        return
+      }
+
+      console.error(
+        '[itoSessionManager] Stream failed while recording, cleaning up...',
+        error,
+      )
+      this.streamResponsePromise = null
+      this.contextFetchPromise = null
+
+      itoStreamController.cancelTranscription()
+      try {
+        await voiceInputService.stopAudioRecording()
+      } catch (stopError) {
+        console.error(
+          '[itoSessionManager] Failed to stop audio after stream error:',
+          stopError,
+        )
+      }
+
+      recordingStateNotifier.notifyRecordingStopped()
+      recordingStateNotifier.notifyEditingStopped()
+      recordingStateNotifier.notifyPolishingStopped()
+      recordingStateNotifier.notifyProcessingStopped()
+
+      try {
+        await this.handleTranscriptionError(error)
+      } catch (handleError) {
+        console.error(
+          '[itoSessionManager] Failed to handle transcription error after stream failure:',
+          handleError,
+        )
+      }
+    } catch (cleanupError) {
+      console.error(
+        '[itoSessionManager] Failed to clean up after stream failure:',
+        cleanupError,
+      )
+    }
   }
 
   private async fetchCursorContextForGrammar() {

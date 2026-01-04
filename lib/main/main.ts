@@ -56,13 +56,15 @@ import { teardown } from './teardown'
 // Handle HTTP/2 session errors gracefully without showing pop-up
 // These errors can occur when the gRPC connection to the server dies unexpectedly
 process.on('uncaughtException', (error: Error) => {
+  const errorCode = (error as NodeJS.ErrnoException).code
   // Check if this is an HTTP/2 frame error
   if (
+    errorCode === 'ERR_HTTP2_TOO_MANY_INVALID_FRAMES' ||
     error.message?.includes('ERR_HTTP2_TOO_MANY_INVALID_FRAMES') ||
     error.message?.includes('Too many invalid HTTP/2 frames')
   ) {
     console.log('[Main] HTTP/2 session error caught, resetting gRPC connection')
-    grpcClient.abortSession()
+    grpcClient.abortSession(error.message)
     return // Don't re-throw, prevents pop-up
   }
 

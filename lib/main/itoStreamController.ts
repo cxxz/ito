@@ -91,6 +91,10 @@ export class ItoStreamController {
     }
   }
 
+  public isStreaming(): boolean {
+    return this.audioStreamManager.isCurrentlyStreaming()
+  }
+
   public getCurrentMode(): ItoMode {
     return this.currentMode
   }

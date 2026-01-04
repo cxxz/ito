@@ -46,13 +46,18 @@ class GrpcClient {
   private timingClient: ReturnType<typeof createClient<typeof TimingService>>
   private mainWindow: BrowserWindow | null = null
   private sessionManager: Http2SessionManager
+  private baseUrl: string
 
   constructor() {
-    const baseUrl = import.meta.env.VITE_GRPC_BASE_URL
+    this.baseUrl = import.meta.env.VITE_GRPC_BASE_URL
+    this.initializeTransport({ log: true })
+  }
 
+  private initializeTransport(options?: { log?: boolean }) {
+    const shouldLog = options?.log ?? false
     // Create HTTP/2 session manager with keepalive configuration
     // This prevents "Too many invalid HTTP/2 frames" errors during long-running streams
-    this.sessionManager = new Http2SessionManager(baseUrl, {
+    this.sessionManager = new Http2SessionManager(this.baseUrl, {
       pingIntervalMs: 10_000, // Send PING every 10 seconds to keep connection alive
       pingIdleConnection: true, // Keep pinging even without active streams
       pingTimeoutMs: 5_000, // 5 second timeout for PING response
@@ -60,18 +65,31 @@ class GrpcClient {
     })
 
     const transport = createConnectTransport({
-      baseUrl,
+      baseUrl: this.baseUrl,
       httpVersion: '2',
       sessionManager: this.sessionManager,
     })
 
-    console.log('[gRPC Client] Creating client with base URL:', baseUrl)
-    console.log(
-      '[gRPC Client] HTTP/2 keepalive enabled: pingInterval=10s, pingTimeout=5s, idleTimeout=60s',
-    )
+    if (shouldLog) {
+      console.log('[gRPC Client] Creating client with base URL:', this.baseUrl)
+      console.log(
+        '[gRPC Client] HTTP/2 keepalive enabled: pingInterval=10s, pingTimeout=5s, idleTimeout=60s',
+      )
+    }
 
     this.client = createClient(ItoService, transport)
     this.timingClient = createClient(TimingService, transport)
+  }
+
+  private resetTransport(reason?: string) {
+    const suffix = reason ? `: ${reason}` : ''
+    console.warn(`[gRPC Client] Resetting HTTP/2 transport${suffix}`)
+    try {
+      this.sessionManager.abort()
+    } catch (error) {
+      console.warn('[gRPC Client] Failed to abort HTTP/2 session:', error)
+    }
+    this.initializeTransport()
   }
 
   // Log current HTTP/2 session state for diagnostics
@@ -83,11 +101,11 @@ class GrpcClient {
   }
 
   // Public method to abort HTTP/2 session from external callers (e.g., uncaught exception handler)
-  abortSession() {
+  abortSession(reason?: string) {
     console.log(
       '[gRPC Client] External abort requested, resetting HTTP/2 session',
     )
-    this.sessionManager.abort()
+    this.resetTransport(reason ?? 'external abort')
   }
 
   // Check if an error is an HTTP/2 connection error that requires session reset
@@ -122,7 +140,11 @@ class GrpcClient {
       console.log(
         `[gRPC Client] Session in ${currentState} state, forcing fresh connection for stream`,
       )
-      this.sessionManager.abort()
+      if (currentState === 'error') {
+        this.resetTransport('session error state')
+      } else {
+        this.sessionManager.abort()
+      }
     }
 
     // Establish a fresh connection
@@ -134,8 +156,10 @@ class GrpcClient {
       )
 
       if (connectResult === 'error') {
-        console.log('[gRPC Client] Connection failed, retrying...')
-        this.sessionManager.abort()
+        console.log(
+          '[gRPC Client] Connection failed, resetting transport and retrying...',
+        )
+        this.resetTransport('connect failed')
         const retryResult = await this.sessionManager.connect()
         console.log('[gRPC Client] Retry result:', retryResult)
         if (retryResult === 'error') {
@@ -191,7 +215,8 @@ class GrpcClient {
       // If we get an HTTP/2 error, abort the session to force a fresh connection
       if (this.isHttp2Error(error)) {
         console.log('[gRPC Client] HTTP/2 error detected, resetting connection')
-        this.sessionManager.abort()
+        const reason = error instanceof Error ? error.message : 'HTTP/2 error'
+        this.resetTransport(reason)
 
         // Retry once with fresh connection (for unary calls only)
         // This prevents pop-ups for transient connection issues
@@ -237,9 +262,10 @@ class GrpcClient {
           // If we get an HTTP/2 error, abort the session to force a fresh connection next time
           if (this.isHttp2Error(error)) {
             console.log(
-              '[gRPC Client] HTTP/2 error detected, aborting session to force reconnection',
+              '[gRPC Client] HTTP/2 error detected, resetting transport after stream failure',
             )
-            this.sessionManager.abort()
+            const reason = error instanceof Error ? error.message : 'HTTP/2 error'
+            this.resetTransport(reason)
           }
           throw error
         }
