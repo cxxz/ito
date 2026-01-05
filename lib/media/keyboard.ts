@@ -38,6 +38,7 @@ type ProcessEvent =
 // Global key listener process singleton
 export let KeyListenerProcess: ReturnType<typeof spawn> | null = null
 let activeShortcutId: string | null = null
+let lastKeyEventReceived = Date.now()
 
 // Heartbeat monitoring state
 let lastHeartbeatReceived = Date.now()
@@ -58,6 +59,7 @@ export const resetForTesting = () => {
     stopHeartbeatChecker()
     lastHeartbeatReceived = Date.now()
     lastHeartbeatCheck = lastHeartbeatReceived
+    lastKeyEventReceived = lastHeartbeatReceived
     // Reset double-tap state
     doubleTapState.lastTapTime = 0
     doubleTapState.lastKey = null
@@ -112,7 +114,7 @@ function stopHeartbeatChecker() {
   }
 }
 
-function restartKeyListener() {
+export const restartKeyListener = () => {
   console.warn('🔄 Restarting keyboard listener due to timeout...')
   stopKeyListener()
   // Wait a brief moment before restarting to ensure cleanup is complete
@@ -120,6 +122,8 @@ function restartKeyListener() {
     startKeyListener()
   }, 1000)
 }
+
+export const getLastKeyEventReceived = () => lastKeyEventReceived
 
 // This set will track the state of all currently pressed keys.
 const pressedKeys = new Set<string>()
@@ -457,6 +461,7 @@ export const startKeyListener = () => {
 
             // Handle regular key events
             if (event.type === 'keydown' || event.type === 'keyup') {
+              lastKeyEventReceived = Date.now()
               // Process the event here in the main process for hotkey detection.
               handleKeyEventInMain(event)
 
@@ -511,6 +516,7 @@ export const startKeyListener = () => {
     // Start heartbeat monitoring
     lastHeartbeatReceived = Date.now()
     lastHeartbeatCheck = lastHeartbeatReceived
+    lastKeyEventReceived = lastHeartbeatReceived
     startHeartbeatChecker()
   } catch (error) {
     console.error('Failed to start key listener:', error)

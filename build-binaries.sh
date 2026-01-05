@@ -48,10 +48,15 @@ build_native_workspace() {
 
     apply_rdev_macos_patch() {
         local patch_file="$project_root/native/patches/rdev-macos-null-layout.patch"
+        local tap_patch_file="$project_root/native/patches/rdev-macos-event-tap-reenable.patch"
         local checkouts_dir="$CARGO_HOME/git/checkouts"
 
         if [ ! -f "$patch_file" ]; then
             print_error "Missing patch file: $patch_file"
+            exit 1
+        fi
+        if [ ! -f "$tap_patch_file" ]; then
+            print_error "Missing patch file: $tap_patch_file"
             exit 1
         fi
         if ! command -v patch &>/dev/null; then
@@ -71,12 +76,16 @@ build_native_workspace() {
                 continue
             fi
             found=true
-            if grep -q "TISCopyCurrentKeyboardLayoutInputSource" "$checkout/src/macos/keyboard.rs"; then
-                continue
+            if ! grep -q "TISCopyCurrentKeyboardLayoutInputSource" "$checkout/src/macos/keyboard.rs"; then
+                print_info "Applying rdev macOS null-layout patch in: $checkout"
+                (cd "$checkout" && patch -p0 -N -f <"$patch_file")
+                did_patch=true
             fi
-            print_info "Applying rdev macOS null-layout patch in: $checkout"
-            (cd "$checkout" && patch -p0 -N -f <"$patch_file")
-            did_patch=true
+            if ! grep -q "EVENT_TAP" "$checkout/src/macos/grab.rs"; then
+                print_info "Applying rdev macOS event-tap patch in: $checkout"
+                (cd "$checkout" && patch -p0 -N -f <"$tap_patch_file")
+                did_patch=true
+            fi
         done
         shopt -u nullglob
 

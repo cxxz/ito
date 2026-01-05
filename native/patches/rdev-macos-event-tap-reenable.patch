@@ -1,0 +1,39 @@
+--- src/macos/grab.rs
++++ src/macos/grab.rs
+@@ -10,6 +10,7 @@
+ fn default_callback(event: Event) -> Option<Event> {
+     println!("Default {:?}", event);
+     Some(event)
+ }
+ static mut GLOBAL_CALLBACK: GrabCallback = default_callback;
++static mut EVENT_TAP: CFMachPortRef = std::ptr::null();
+ 
+ unsafe extern "C" fn raw_callback(
+     _proxy: CGEventTapProxy,
+     _type: CGEventType,
+     cg_event: CGEventRef,
+     _user_info: *mut c_void,
+ ) -> CGEventRef {
++    if matches!(
++        _type,
++        CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput
++    ) {
++        if !EVENT_TAP.is_null() {
++            CGEventTapEnable(EVENT_TAP, true);
++        }
++        return cg_event;
++    }
++
+     // println!("Event ref {:?}", cg_event_ptr);
+     // let cg_event: CGEvent = transmute_copy::<*mut c_void, CGEvent>(&cg_event_ptr);
+     let opt = KEYBOARD_STATE.lock();
+@@ -46,6 +58,7 @@
+         );
+         if tap.is_null() {
+             return Err(GrabError::EventTapError);
+         }
++        EVENT_TAP = tap;
+         let _loop = CFMachPortCreateRunLoopSource(nil, tap, 0);
+         if _loop.is_null() {
+             return Err(GrabError::LoopSourceError);
+         }

@@ -1,7 +1,7 @@
 // Import env first to set up app paths and name before app.whenReady()
 import { ITO_ENV } from './env'
 
-import { app, protocol, BrowserWindow } from 'electron'
+import { app, protocol, BrowserWindow, powerMonitor } from 'electron'
 
 // Inline replacement for @electron-toolkit/utils to avoid module load timing issues
 const setAppUserModelId = (id: string): void => {
@@ -38,7 +38,11 @@ import { registerIPC } from '../window/ipcEvents'
 import { registerDevIPC } from '../window/ipcDev'
 import { initializeDatabase } from './sqlite/db'
 import { setupProtocolHandling, processStartupProtocolUrl } from '../protocol'
-import { startKeyListener } from '../media/keyboard'
+import {
+  startKeyListener,
+  restartKeyListener,
+  getLastKeyEventReceived,
+} from '../media/keyboard'
 // Import the grpcClient singleton
 import { grpcClient } from '../clients/grpcClient'
 import { preventAppNap } from './appNap'
@@ -146,6 +150,31 @@ app.whenReady().then(async () => {
     console.log('Accessibility permissions found, starting key listener.')
     startKeyListener()
   }
+
+  const restartKeyListenerIfAllowed = (reason: string) => {
+    if (!checkAccessibilityPermission(false)) {
+      console.warn(
+        `[Key listener] Skipping restart (${reason}): accessibility permission missing.`,
+      )
+      return
+    }
+    console.warn(`[Key listener] Restarting due to ${reason}...`)
+    restartKeyListener()
+  }
+
+  const maybeRestartOnUserActive = () => {
+    const idleMs = Date.now() - getLastKeyEventReceived()
+    const IDLE_RESTART_THRESHOLD_MS = 60 * 60 * 1000
+    if (idleMs >= IDLE_RESTART_THRESHOLD_MS) {
+      restartKeyListenerIfAllowed('user idle')
+    }
+  }
+
+  powerMonitor.on('resume', () => restartKeyListenerIfAllowed('system resume'))
+  powerMonitor.on('unlock-screen', () =>
+    restartKeyListenerIfAllowed('screen unlock'),
+  )
+  powerMonitor.on('user-did-become-active', maybeRestartOnUserActive)
 
   console.log('Microphone access granted, starting audio recorder.')
   voiceInputService.setUpAudioRecorderListeners()
