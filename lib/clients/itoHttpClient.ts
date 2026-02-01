@@ -18,10 +18,19 @@ class ItoHttpClient {
     return (store.get(STORE_KEYS.ACCESS_TOKEN) as string | null) || ''
   }
 
+  private getApiKey(): string {
+    const apiKey = import.meta.env.VITE_GRPC_API_KEY
+    if (!apiKey) {
+      throw new Error('VITE_GRPC_API_KEY is required to make server requests')
+    }
+    return apiKey
+  }
+
   async get(path: string, options: RequestOptions = {}) {
     try {
       const { requireAuth = false, headers = {} } = options
       const token = this.getAccessToken()
+      const apiKey = this.getApiKey()
 
       if (requireAuth && !token) {
         return { success: false, error: 'Access token not available' }
@@ -31,6 +40,7 @@ class ItoHttpClient {
       const response = await fetch(url.toString(), {
         headers: {
           ...headers,
+          'x-ito-api-key': apiKey,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       })
@@ -55,6 +65,7 @@ class ItoHttpClient {
     try {
       const { requireAuth = false, headers = {} } = options
       const token = this.getAccessToken()
+      const apiKey = this.getApiKey()
 
       if (requireAuth && !token) {
         return { success: false, error: 'Access token not available' }
@@ -66,6 +77,7 @@ class ItoHttpClient {
         headers: {
           ...(body && { 'content-type': 'application/json' }),
           ...headers,
+          'x-ito-api-key': apiKey,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         ...(body && { body: JSON.stringify(body) }),

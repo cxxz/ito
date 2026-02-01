@@ -4,6 +4,7 @@ import { fastifyConnectPlugin } from '@connectrpc/connect-fastify'
 import { createContextValues } from '@connectrpc/connect'
 import itoServiceRoutes from './services/ito/itoService.js'
 import { kUser } from './auth/userContext.js'
+import { createApiKeyInterceptor } from './auth/api-key-interceptor.js'
 import { errorInterceptor } from './services/errorInterceptor.js'
 import { loggingInterceptor } from './services/loggingInterceptor.js'
 import { createValidationInterceptor } from './services/validationInterceptor.js'
@@ -65,6 +66,7 @@ export const startServer = async () => {
       // Order matters: logging -> validation -> error handling
       interceptors: [
         loggingInterceptor,
+        createApiKeyInterceptor(),
         createValidationInterceptor(),
         errorInterceptor,
       ],

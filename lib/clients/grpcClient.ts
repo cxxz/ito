@@ -47,9 +47,14 @@ class GrpcClient {
   private mainWindow: BrowserWindow | null = null
   private sessionManager: Http2SessionManager
   private baseUrl: string
+  private apiKey: string
 
   constructor() {
     this.baseUrl = import.meta.env.VITE_GRPC_BASE_URL
+    this.apiKey = import.meta.env.VITE_GRPC_API_KEY
+    if (!this.apiKey) {
+      throw new Error('VITE_GRPC_API_KEY is required to start the app')
+    }
     this.initializeTransport({ log: true })
   }
 
@@ -197,8 +202,9 @@ class GrpcClient {
   }
 
   private getHeaders() {
-    // Self-hosted mode: no authentication required
-    return new Headers()
+    return new Headers({
+      'x-ito-api-key': this.apiKey,
+    })
   }
 
   private async withRetry<T>(

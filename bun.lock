@@ -62,7 +62,7 @@
         "@types/sinonjs__fake-timers": "^8.1.5",
         "@vitejs/plugin-react": "^4.5.0",
         "bun-types": "^1.2.19",
-        "electron": "37",
+        "electron": "^37.10.3",
         "electron-builder": "^26.0.20",
         "electron-vite": "5",
         "eslint": "^9.28.0",
