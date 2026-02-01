@@ -265,9 +265,11 @@ const Pill = () => {
   // Determine current state
   const anyRecording = isRecording || isManualRecording
   const shouldShow =
-    (onboardingCategory === ONBOARDING_CATEGORIES.TRY_IT ||
+    anyRecording ||
+    isProcessing ||
+    ((onboardingCategory === ONBOARDING_CATEGORIES.TRY_IT ||
       onboardingCompleted) &&
-    (anyRecording || isProcessing || showItoBarAlways || isHovered)
+      (showItoBarAlways || isHovered))
 
   // Calculate dimensions based on state
   let currentWidth = idleWidth

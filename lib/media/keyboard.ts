@@ -62,7 +62,7 @@ export const resetForTesting = () => {
     lastKeyEventReceived = lastHeartbeatReceived
     // Reset double-tap state
     doubleTapState.lastTapTime = 0
-    doubleTapState.lastKey = null
+    doubleTapState.lastTapSignature = null
     doubleTapState.isRecording = false
     activeTaps.clear()
   }
@@ -73,6 +73,15 @@ const nativeModuleName = 'global-key-listener'
 // Normalizes a raw key event into a consistent string
 function normalizeKey(rawKey: string): KeyName {
   return keyNameMap[rawKey] || rawKey.toLowerCase()
+}
+
+function getBaseKey(key: string): string {
+  return key.replace(/-left$|-right$/, '')
+}
+
+function getShortcutBaseKeys(keys: KeyName[]): string[] {
+  const baseKeys = keys.map(key => getBaseKey(normalizeLegacyKey(key)))
+  return Array.from(new Set(baseKeys)).sort()
 }
 
 // Export the key name mapping for use in UI components
@@ -146,10 +155,10 @@ const TAP_MAX_HOLD_MS = 300 // Max key hold duration to count as a "tap" (vs a "
 // Double-tap detection state
 const doubleTapState = {
   lastTapTime: 0,
-  lastKey: null as KeyName | null,
+  lastTapSignature: null as string | null,
   isRecording: false, // Track if currently in double-tap recording mode
 }
-const activeTaps = new Map<KeyName, number>() // key -> keydown timestamp
+const activeTaps = new Map<string, { downTime: number; upTime?: number }>()
 
 // Function to check for and remove stuck keys
 function checkForStuckKeys() {
@@ -232,19 +241,14 @@ function handleDoubleTapEvent(
     return false
   }
 
-  // Double-tap only works with single-key shortcuts
-  if (shortcut.keys.length !== 1) {
+  const shortcutBaseKeys = getShortcutBaseKeys(shortcut.keys)
+  if (shortcutBaseKeys.length === 0) {
     return false
   }
 
   const normalizedKey = normalizeKey(event.key)
-  const shortcutKey = normalizeLegacyKey(shortcut.keys[0])
-
-  // Check if the key matches the shortcut's key
-  // Also support matching right variant (e.g., control-right matches control-left shortcut)
-  const baseKey = shortcutKey.replace(/-left$|-right$/, '')
-  const eventBaseKey = normalizedKey.replace(/-left$|-right$/, '')
-  if (shortcutKey !== normalizedKey && baseKey !== eventBaseKey) {
+  const eventBaseKey = getBaseKey(normalizedKey)
+  if (!shortcutBaseKeys.includes(eventBaseKey)) {
     return false
   }
 
@@ -252,48 +256,73 @@ function handleDoubleTapEvent(
 
   if (event.type === 'keydown') {
     // Record the start of a potential tap
-    if (!activeTaps.has(normalizedKey)) {
-      activeTaps.set(normalizedKey, now)
+    const existing = activeTaps.get(eventBaseKey)
+    if (!existing || existing.upTime != null) {
+      activeTaps.set(eventBaseKey, { downTime: now })
     }
     return false // Don't trigger anything on keydown
   }
 
   if (event.type === 'keyup') {
-    const keydownTime = activeTaps.get(normalizedKey)
-    activeTaps.delete(normalizedKey)
-
-    if (!keydownTime) {
+    const tapState = activeTaps.get(eventBaseKey)
+    if (!tapState) {
       return false
     }
 
-    const holdDuration = now - keydownTime
+    tapState.upTime = now
+
+    const holdDuration = now - tapState.downTime
 
     // Check if this was a quick tap (not a hold)
     if (holdDuration > TAP_MAX_HOLD_MS) {
       // This was a hold, not a tap - reset double-tap state
       doubleTapState.lastTapTime = 0
-      doubleTapState.lastKey = null
+      doubleTapState.lastTapSignature = null
+      for (const key of shortcutBaseKeys) {
+        activeTaps.delete(key)
+      }
       return false
     }
 
+    const allKeysReleased = shortcutBaseKeys.every(
+      key => activeTaps.get(key)?.upTime,
+    )
+    const anyKeysStillPressed = Array.from(pressedKeys).some(key =>
+      shortcutBaseKeys.includes(getBaseKey(key)),
+    )
+
+    if (!allKeysReleased || anyKeysStillPressed) {
+      return false
+    }
+
+    const tapCompletedTime = Math.max(
+      ...shortcutBaseKeys.map(key => activeTaps.get(key)?.upTime || 0),
+    )
+
     // This was a tap - check for double-tap
-    const timeSinceLastTap = now - doubleTapState.lastTapTime
+    const timeSinceLastTap = tapCompletedTime - doubleTapState.lastTapTime
+    const tapSignature = shortcutBaseKeys.join('+')
 
     // Check if this is a double-tap (same base key, within threshold)
-    const lastBaseKey = doubleTapState.lastKey?.replace(/-left$|-right$/, '')
     if (
-      lastBaseKey === eventBaseKey &&
+      doubleTapState.lastTapSignature === tapSignature &&
       timeSinceLastTap < DOUBLE_TAP_THRESHOLD_MS
     ) {
       // Double-tap detected!
       doubleTapState.lastTapTime = 0
-      doubleTapState.lastKey = null
+      doubleTapState.lastTapSignature = null
+      for (const key of shortcutBaseKeys) {
+        activeTaps.delete(key)
+      }
       return true // Trigger the toggle action
     }
 
     // First tap or different key - start tracking
-    doubleTapState.lastTapTime = now
-    doubleTapState.lastKey = normalizedKey
+    doubleTapState.lastTapTime = tapCompletedTime
+    doubleTapState.lastTapSignature = tapSignature
+    for (const key of shortcutBaseKeys) {
+      activeTaps.delete(key)
+    }
     return false
   }
 
@@ -615,7 +644,7 @@ export const stopKeyListener = () => {
       activeShortcutId = null
       doubleTapState.isRecording = false
       doubleTapState.lastTapTime = 0
-      doubleTapState.lastKey = null
+      doubleTapState.lastTapSignature = null
       activeTaps.clear()
       itoSessionManager.completeSession()
     }

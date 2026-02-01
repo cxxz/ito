@@ -75,6 +75,14 @@ Start-Process -FilePath "$env:TEMP\vs_buildtools.exe" -ArgumentList "--add", "Mi
 
 After installation, restart your terminal. The MSVC compiler should be available when Rust needs it.
 
+### Visual Studio Community 2022 (GUI Install)
+
+If you already have Visual Studio Community 2022:
+
+1. Open Visual Studio Installer.
+2. Modify “Visual Studio Community 2022”.
+3. Install “Desktop development with C++” and ensure “Windows 10/11 SDK” is checked.
+
 ---
 
 ## Step 3: Install Rust
@@ -202,6 +210,9 @@ cp .env.example .env
 
 # Build native Rust binaries
 ./build-binaries.sh --windows
+
+# Build native Rust binaries (PowerShell)
+./build-binaries.ps1 -Windows
 
 # Build the Electron app
 bun run electron-vite build

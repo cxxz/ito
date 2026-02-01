@@ -22,6 +22,63 @@ print_error() {
     echo -e "${RED}Error:${NC} $1" >&2
 }
 
+load_msvc_env() {
+    if [ -n "${MSVC_ENV_INITIALIZED:-}" ]; then
+        return 0
+    fi
+
+    if [ -n "${VCINSTALLDIR:-}" ] && command -v cl.exe &>/dev/null; then
+        export MSVC_ENV_INITIALIZED=true
+        return 0
+    fi
+
+    local vswhere_path="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+    if [ ! -f "$vswhere_path" ]; then
+        vswhere_path="/c/Program Files/Microsoft Visual Studio/Installer/vswhere.exe"
+    fi
+
+    if [ ! -f "$vswhere_path" ]; then
+        print_error "vswhere.exe not found. Install Visual Studio Build Tools with the C++ workload."
+        exit 1
+    fi
+
+    local install_path
+    install_path="$("$vswhere_path" -latest -products \* -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)"
+    if [ -z "$install_path" ]; then
+        print_error "Visual Studio C++ Build Tools not found. Install the C++ build tools workload."
+        exit 1
+    fi
+
+    local vcvars_path="$install_path/VC/Auxiliary/Build/vcvars64.bat"
+    if [ ! -f "$vcvars_path" ]; then
+        print_error "vcvars64.bat not found at: $vcvars_path"
+        exit 1
+    fi
+
+    print_info "Loading MSVC build environment..."
+
+    if ! command -v cygpath &>/dev/null; then
+        print_error "cygpath not found; run this script from Git Bash or MSYS2."
+        exit 1
+    fi
+
+    local vcvars_win_path
+    vcvars_win_path="$(cygpath -w "$vcvars_path")"
+
+    local env_output
+    env_output="$(cmd.exe /c "call \"$vcvars_win_path\" >nul && set" | tr -d '\r')"
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            PATH|INCLUDE|LIB|LIBPATH|VCINSTALLDIR|VSINSTALLDIR|VSCMD_VER|WindowsSdkDir|WindowsSdkVersion|VCToolsInstallDir|VCToolsVersion)
+                export "$key=$value"
+                ;;
+        esac
+    done <<< "$env_output"
+
+    export MSVC_ENV_INITIALIZED=true
+}
+
 # --- Build the entire native workspace ---
 build_native_workspace() {
     print_status "Building native workspace..."
@@ -144,6 +201,7 @@ build_native_workspace() {
 
         # Use MSVC on Windows (better AV compatibility), GNU for cross-compilation
         if [ "$compiling_on_windows" = true ]; then
+            load_msvc_env
             print_info "Building with MSVC toolchain on Windows..."
             cargo build --release --target x86_64-pc-windows-msvc
         else
@@ -218,6 +276,7 @@ if [ "$BUILD_WINDOWS" = true ]; then
     if [ "$compiling_on_windows" = true ]; then
         # On Windows, use MSVC toolchain (better AV compatibility)
         print_info "Using MSVC toolchain on Windows for better antivirus compatibility"
+        load_msvc_env
         rustup target add x86_64-pc-windows-msvc
     else
         # For cross-compilation from macOS/Linux, use GNU toolchain

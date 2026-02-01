@@ -20,19 +20,6 @@ export default function KeyboardSettingsContent() {
   const handleTriggerTypeChange = async (triggerType: TriggerType) => {
     // Update all TRANSCRIBE shortcuts to use the new trigger type
     for (const shortcut of transcribeShortcuts) {
-      // When switching to double-tap, also update keys to control-left if needed
-      // Double-tap only works with single-key shortcuts
-      if (triggerType === 'double-tap') {
-        // If the shortcut doesn't have control-left as a single key, update it
-        const hasCtrl =
-          shortcut.keys.length === 1 &&
-          (shortcut.keys[0] === 'control-left' ||
-            shortcut.keys[0] === 'control-right')
-        if (!hasCtrl) {
-          await updateKeyboardShortcut(shortcut.id, ['control-left'])
-        }
-      }
-
       // Update the trigger type after updating keys (to ensure correct state)
       updateShortcutTriggerType(shortcut.id, triggerType)
     }
@@ -47,7 +34,7 @@ export default function KeyboardSettingsContent() {
               <div className="text-sm font-medium mb-2">Keyboard Shortcut</div>
               <div className="text-xs text-gray-600 mb-4">
                 {transcribeTriggerType === 'double-tap'
-                  ? 'Double-tap the Control key to start recording, double-tap again to stop and transcribe.'
+                  ? 'Double-tap the shortcut to start recording, double-tap again to stop and transcribe.'
                   : 'Press and hold the keys to record, release to stop and transcribe.'}
               </div>
 
@@ -65,7 +52,6 @@ export default function KeyboardSettingsContent() {
             <MultiShortcutEditor
               shortcuts={transcribeShortcuts}
               mode={ItoMode.TRANSCRIBE}
-              disabled={transcribeTriggerType === 'double-tap'}
             />
           </div>
           <div className="flex gap-4 justify-between">
