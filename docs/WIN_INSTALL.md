@@ -38,12 +38,13 @@ git --version
 
 ## Step 2: Install Visual Studio Build Tools
 
-The MSVC toolchain is required for compiling native Rust components.
+The MSVC toolchain is required for compiling native Rust components. Any recent version works (2022 or 2026).
 
-### Option A: Using winget
+### Option A: Using winget (Recommended)
 
 ```powershell
-winget install -e --id Microsoft.VisualStudio.2022.BuildTools
+# Install the latest version (Visual Studio 2026)
+winget install -e --id Microsoft.VisualStudio.2026.BuildTools
 ```
 
 After installation, you need to add the C++ workload. Run the Visual Studio Installer and select "Desktop development with C++".
@@ -53,8 +54,8 @@ After installation, you need to add the C++ workload. Run the Visual Studio Inst
 Download and run the bootstrapper with the C++ workload pre-selected:
 
 ```powershell
-# Download the installer
-Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_buildtools.exe" -OutFile "$env:TEMP\vs_buildtools.exe"
+# Download the latest installer
+Invoke-WebRequest -Uri "https://aka.ms/vs/18/release/vs_buildtools.exe" -OutFile "$env:TEMP\vs_buildtools.exe"
 
 # Install with C++ workload
 Start-Process -FilePath "$env:TEMP\vs_buildtools.exe" -ArgumentList "--add", "Microsoft.VisualStudio.Workload.VCTools", "--includeRecommended", "--passive", "--norestart", "--wait" -Wait
@@ -62,11 +63,13 @@ Start-Process -FilePath "$env:TEMP\vs_buildtools.exe" -ArgumentList "--add", "Mi
 
 ### Option C: Manual Download
 
-1. Go to [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-2. Download "Build Tools for Visual Studio 2022"
+1. Go to [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/)
+2. Scroll to "Tools for Visual Studio" and download "Build Tools for Visual Studio 2026"
 3. Run the installer
 4. Select **"Desktop development with C++"** workload
 5. Click Install
+
+> **Note:** Visual Studio 2022 also works if you already have it installed. The codebase only requires the MSVC toolchain, not a specific VS version.
 
 ### Verify Installation
 
@@ -246,7 +249,7 @@ bash build-binaries.sh --windows
 | Tool | Purpose | Install Command |
 |------|---------|-----------------|
 | Git Bash | Unix-like shell for build scripts | `winget install -e --id Git.Git` |
-| VS Build Tools | MSVC compiler for Rust | `winget install -e --id Microsoft.VisualStudio.2022.BuildTools` |
+| VS Build Tools | MSVC compiler for Rust | `winget install -e --id Microsoft.VisualStudio.2026.BuildTools` |
 | Rust | Native component compilation | [rustup.rs](https://rustup.rs/) |
 | Node.js | JavaScript runtime | `winget install -e --id OpenJS.NodeJS.LTS` |
 | Bun | Fast JS package manager | `irm bun.sh/install.ps1 \| iex` |
