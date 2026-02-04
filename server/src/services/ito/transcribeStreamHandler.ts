@@ -25,6 +25,7 @@ import {
   ITO_MODE_SYSTEM_PROMPT,
 } from './constants.js'
 import type { ItoContext } from './types.js'
+import { createPolishPrompt } from '../../prompts/polishPrompt.js'
 import { isAbortError, createAbortError } from '../../utils/abortUtils.js'
 import {
   concatenateAudioChunks,
@@ -162,6 +163,7 @@ export class TranscribeStreamHandler {
         mode,
         windowContext,
         advancedSettings,
+        mergedConfig.vocabulary,
       )
       transcript = adjustResult.transcript
       const polishError = adjustResult.polishError
@@ -501,6 +503,7 @@ export class TranscribeStreamHandler {
     mode: ItoMode,
     windowContext: ItoContext,
     advancedSettings: ReturnType<typeof this.prepareAdvancedSettings>,
+    vocabulary: string[],
   ): Promise<AdjustResult> {
     console.log(
       `[${new Date().toISOString()}] Detected mode: ${mode}, adjusting transcript`,
@@ -543,8 +546,9 @@ export class TranscribeStreamHandler {
         `[${new Date().toISOString()}] Polish enabled for TRANSCRIBE mode`,
       )
 
-      // Use transcriptionPrompt for polishing
-      const userPromptPrefix = getPromptForMode(mode, advancedSettings)
+      // Build polish prompt with vocabulary if available
+      const basePrompt = getPromptForMode(mode, advancedSettings)
+      const userPromptPrefix = createPolishPrompt(basePrompt, vocabulary)
       const userPrompt = createUserPromptWithContext(transcript, windowContext)
 
       // Use polish-specific LLM settings
