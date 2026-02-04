@@ -12,6 +12,7 @@ import { getAsrProvider, getLlmProvider } from '../../clients/providerUtils.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
 import { errorToProtobuf } from '../../clients/errors.js'
 import { createUserPromptWithContext } from '../ito/helpers.js'
+import { createPolishPrompt } from '../../prompts/polishPrompt.js'
 import {
   getDefaultLlmModel,
   getDefaultAsrModel,
@@ -97,8 +98,11 @@ export async function handlePlaygroundRun(
         const llmProvider = getLlmProvider(polishProvider)
 
         // Build the prompt similar to transcribeStreamHandler
-        const transcriptionPrompt =
-          DEFAULT_ADVANCED_SETTINGS.transcriptionPrompt
+        const basePrompt = DEFAULT_ADVANCED_SETTINGS.transcriptionPrompt
+        const transcriptionPrompt = createPolishPrompt(
+          basePrompt,
+          request.customVocabulary,
+        )
         const userPrompt = createUserPromptWithContext(asrOutput, undefined)
 
         polishedOutput = await llmProvider.adjustTranscript(
@@ -158,8 +162,9 @@ export async function handlePlaygroundPolish(
       DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature
 
     // Use the custom transcription prompt from the request, or fall back to default
-    const transcriptionPrompt =
+    const basePrompt =
       request.transcriptionPrompt || DEFAULT_ADVANCED_SETTINGS.transcriptionPrompt
+    const transcriptionPrompt = createPolishPrompt(basePrompt, [])
 
     console.log(
       `[Playground] Polishing with ${polishProvider}/${polishModel} temp=${polishTemperature}`,
