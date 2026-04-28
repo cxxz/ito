@@ -46,7 +46,7 @@
 
 - **Notes system**: Automatically save transcriptions for later reference
 - **Interaction history**: Track your dictation sessions and improve over time
-- **Cloud sync**: Keep your settings and data synchronized across devices
+- **Self-hosted storage**: Data lives in a local SQLite database and syncs to your own Ito server — no third-party cloud
 - **Export capabilities**: Export your notes and interaction data
 
 ---
@@ -72,16 +72,14 @@
    - **Microphone access**: Required for voice input
    - **Accessibility access**: Required for global keyboard shortcuts and text insertion
 
-4. **Set up authentication**:
-   - Sign in with Google, Apple, Github through Auth0 or create a local account
-   - Complete the guided onboarding process
+4. **Run your Ito server**: Ito is self-hosted — point the app at your own running server (see [server/README.md](server/README.md)). The desktop app and server authenticate via a shared API key (`VITE_GRPC_API_KEY` ↔ `ITO_API_KEY`); no third-party identity provider is involved.
 
 ### First Use
 
-1. **Configure your trigger key**: Choose a comfortable keyboard shortcut (default: `Fn + Space`)
-2. **Test your microphone**: Ensure clear audio input during the setup process
+1. **Complete onboarding**: Walk through the in-app welcome flow (permissions, microphone test, keyboard test, intelligent mode intro, data control)
+2. **Configure your trigger key**: Choose a comfortable keyboard shortcut (default: `Fn + Space`)
 3. **Try it out**: Hold your trigger key and speak into any text field
-4. **Customize settings**: Adjust voice sensitivity, shortcuts, and preferences
+4. **Customize settings**: Adjust audio, shortcuts, dictionary, and advanced provider/model preferences in **Settings**
 
 ---
 
@@ -222,9 +220,10 @@ ito/
 │   ├── selected-text-reader/ # Selected text extraction (Rust)
 │   ├── cursor-context/    # Cursor position context (Swift, macOS)
 │   └── macos-text/        # Text accessibility utilities (Swift, macOS)
-├── server/                # gRPC transcription server
-│   ├── src/               # Server implementation
-│   └── infra/             # AWS infrastructure (CDK)
+├── server/                # gRPC transcription server (self-hosted)
+│   ├── src/               # Server implementation (Fastify + Connect RPC)
+│   ├── scripts/           # Migration helpers
+│   └── docker-compose.yml # Postgres + server containers
 └── resources/             # Build resources & assets
 ```
 
@@ -283,12 +282,14 @@ bun runNativeTests         # Run native (Rust) tests only
 - **Zustand** - Lightweight state management
 - **Framer Motion** - Smooth animations
 
-**Backend:**
+**Backend (self-hosted server):**
 
-- **Node.js** - Runtime environment
-- **gRPC** - High-performance RPC for transcription services
-- **SQLite** - Local data storage
+- **Bun** - Runtime environment
+- **Fastify + Connect RPC** - HTTP/gRPC server
+- **PostgreSQL** - Server-side data storage
+- **SQLite** - Local data storage in the desktop app
 - **Protocol Buffers** - Efficient data serialization
+- **Multi-LLM/ASR providers** - Groq, Cerebras, OpenAI, Aliyun (or any OpenAI-compatible endpoint, e.g. local Whisper via Vox-Box)
 
 **Native Components:**
 
@@ -299,9 +300,8 @@ bun runNativeTests         # Run native (Rust) tests only
 
 **Infrastructure:**
 
-- **AWS CDK** - Infrastructure as code
-- **Docker** - Containerized deployments
-- **Auth0** - Authentication and user management
+- **Docker Compose** - Local server + Postgres for development and self-hosting
+- **Shared API key** - Simple `x-ito-api-key` authentication between app and server
 
 ### Communication Flow
 
@@ -340,10 +340,10 @@ Fine-tune audio capture in **Settings > Audio**:
 
 ### Privacy & Data
 
-Control your data in **Settings > General**:
+Control your data in **Settings > General** and **Settings > Advanced**:
 
-- **Local processing**: Keep voice data on your device
-- **Cloud sync**: Synchronize settings across devices
+- **Self-hosted by default**: Audio is sent only to the Ito server you run
+- **Pluggable providers**: Choose ASR/LLM providers per workload (Groq, Cerebras, OpenAI, Aliyun) or point at a local OpenAI-compatible endpoint for fully offline transcription (see [developers/MACOS-LOCAL-DEPLOY.md](developers/MACOS-LOCAL-DEPLOY.md))
 - **Analytics**: Share anonymous usage data (optional)
 - **Data export**: Download your notes and interaction history
 
@@ -353,8 +353,8 @@ Control your data in **Settings > General**:
 
 ### Data Handling
 
-- **Local-enabled**: Voice processing can be done entirely on your device or using our cloud
-- **Encrypted transmission**: All network communication uses TLS encryption
+- **Self-hosted**: Voice processing runs through the Ito server you operate; nothing is sent to a hosted Ito service
+- **Fully offline option**: Pair the server with a local Whisper model for end-to-end on-device transcription
 - **Minimal data collection**: Only essential data is processed and stored
 - **User control**: Full control and transparency over data retention and deletion
 
@@ -364,7 +364,7 @@ Control your data in **Settings > General**:
 
 - **Microphone Access**: To capture your voice for transcription
 - **Accessibility Access**: To detect keyboard shortcuts and insert text
-- **Network Access**: For cloud features and updates (optional)
+- **Network Access**: To reach your Ito server and any external ASR/LLM providers you configure
 
 ### Open Source
 

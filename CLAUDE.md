@@ -21,7 +21,9 @@ Main development branch: `dev`
 ## Development Commands
 
 - Dev: `bun dev` (starts electron-vite dev with watch)
-- Server: `docker compose up --build` (run from server directory)
+- Server (run from `server/`):
+  - Local dev: `bun install` → `bun local-db-up` (starts Postgres) → `bun db:migrate` → `bun dev` (tsx watch with hot reload)
+  - Full stack via Docker: `bun docker` (equivalent to `docker compose up --build`)
 - Build: `bun build:mac` or `bun build:win`
 - Test: `bun runAllTests` (runs lib, server, app, and native tests)
   - Lib tests: `bun runLibTests`
