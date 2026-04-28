@@ -1,6 +1,5 @@
-import { describe, test, expect, beforeEach, mock, afterEach } from 'bun:test'
+import { describe, test, expect, beforeEach, mock, spyOn } from 'bun:test'
 
-// Mock electron-log
 mock.module('electron-log', () => ({
   default: {
     info: mock(),
@@ -9,7 +8,6 @@ mock.module('electron-log', () => ({
   },
 }))
 
-// Mock store
 const mockStore = {
   get: mock((key: string) => {
     if (key === 'settings') {
@@ -24,60 +22,52 @@ mock.module('../store', () => ({
   getCurrentUserId: mock(() => 'test-user-id'),
 }))
 
-// Mock grpcClient
-const mockSubmitTimingReports = mock(() => Promise.resolve({}))
-mock.module('../../clients/grpcClient', () => ({
-  grpcClient: {
-    submitTimingReports: mockSubmitTimingReports,
-  },
-}))
-
-// Import after all mocks are set up
 import { TimingCollector, TimingEventName } from './TimingCollector'
 
 describe('TimingCollector', () => {
   let timingCollector: TimingCollector
-  let originalDateNow: typeof Date.now
+  let logSpy: ReturnType<typeof spyOn>
+  let warnSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
-    // Capture original Date.now
-    originalDateNow = Date.now
-
-    // Create a fresh instance for each test
     timingCollector = new TimingCollector()
-
-    // Clear all mocks
     mockStore.get.mockClear()
-    mockSubmitTimingReports.mockClear()
-
-    // Reset default behaviors
     mockStore.get.mockImplementation((key: string) => {
       if (key === 'settings') {
         return { shareAnalytics: true }
       }
       return undefined
     })
-    mockSubmitTimingReports.mockResolvedValue({})
+    logSpy = spyOn(console, 'log').mockImplementation(() => {})
+    warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
   })
 
-  afterEach(() => {
-    // Restore Date.now
-    Date.now = originalDateNow
-  })
+  const expectLogIncludes = (substring: string) => {
+    expect(
+      logSpy.mock.calls.some(args =>
+        args.some(arg => typeof arg === 'string' && arg.includes(substring)),
+      ),
+    ).toBe(true)
+  }
+
+  const expectWarnIncludes = (substring: string) => {
+    expect(
+      warnSpy.mock.calls.some(args =>
+        args.some(arg => typeof arg === 'string' && arg.includes(substring)),
+      ),
+    ).toBe(true)
+  }
 
   describe('Interaction Lifecycle', () => {
-    test('should start tracking an interaction', async () => {
+    test('logs a finalized interaction summary', () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
       timingCollector.finalizeInteraction(interactionId)
 
-      await timingCollector.flush()
-
-      // Should have sent a report
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
+      expectLogIncludes(`Finalized interaction: ${interactionId}`)
     })
 
-    test('should not track if analytics disabled', async () => {
+    test('skips entirely when shareAnalytics is disabled', () => {
       mockStore.get.mockImplementation((key: string) => {
         if (key === 'settings') {
           return { shareAnalytics: false }
@@ -89,180 +79,120 @@ describe('TimingCollector', () => {
       timingCollector.startInteraction(interactionId)
       timingCollector.finalizeInteraction(interactionId)
 
-      await timingCollector.flush()
-
-      // Should not have sent any reports
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
+      expect(
+        logSpy.mock.calls.some(args =>
+          args.some(
+            arg => typeof arg === 'string' && arg.includes('Finalized'),
+          ),
+        ),
+      ).toBe(false)
     })
 
-    test('should clear interaction without finalizing', async () => {
+    test('clearInteraction discards in-flight state', () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
       timingCollector.clearInteraction(interactionId)
+      timingCollector.finalizeInteraction(interactionId)
 
-      await timingCollector.flush()
-
-      // Should not have sent any reports (cleared before finalizing)
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
+      expectWarnIncludes(
+        `Cannot finalize unknown interaction: ${interactionId}`,
+      )
     })
   })
 
   describe('Timing Events', () => {
-    test('should record start and end timing', async () => {
+    test('records start and end without warnings', () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
-
       timingCollector.startTiming(TimingEventName.TEXT_WRITER, interactionId)
       timingCollector.endTiming(TimingEventName.TEXT_WRITER, interactionId)
 
-      timingCollector.finalizeInteraction(interactionId)
-
-      await timingCollector.flush()
-
-      // Should have sent a report
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
+      expect(warnSpy).not.toHaveBeenCalled()
     })
 
-    test('should handle null interaction ID gracefully', async () => {
-      timingCollector.startTiming(TimingEventName.TEXT_WRITER)
-      timingCollector.endTiming(TimingEventName.TEXT_WRITER)
-
-      await timingCollector.flush()
-
-      // Should not send any reports
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
-    })
-
-    test('should warn when ending timing for unknown interaction', async () => {
-      timingCollector.endTiming(
-        TimingEventName.TEXT_WRITER,
-        'unknown-interaction',
-      )
-
-      await timingCollector.flush()
-
-      // Should not send any reports (no interaction was started)
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
-    })
-
-    test('should warn when ending timing for unknown event', async () => {
+    test('warns when ending an event that was never started', () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
-
-      // End timing without starting it
       timingCollector.endTiming(TimingEventName.TEXT_WRITER, interactionId)
-      timingCollector.finalizeInteraction(interactionId)
 
-      await timingCollector.flush()
+      expectWarnIncludes(
+        `Cannot end timing for unknown event: ${TimingEventName.TEXT_WRITER}`,
+      )
+    })
 
-      // Should still send a report even though event wasn't started
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
+    test('warns when starting a timing for an unregistered interaction', () => {
+      timingCollector.startTiming(TimingEventName.TEXT_WRITER, 'ghost-id')
+      expectWarnIncludes(
+        'Cannot start timing for unknown interaction: ghost-id',
+      )
+    })
+
+    test('no-ops without an interactionId and without a current interaction', () => {
+      timingCollector.startTiming(TimingEventName.TEXT_WRITER)
+      timingCollector.endTiming(TimingEventName.TEXT_WRITER)
+      expect(warnSpy).not.toHaveBeenCalled()
     })
   })
 
-  describe('timeAsync Utility', () => {
-    test('should wrap async function and time it', async () => {
+  describe('timeAsync', () => {
+    test('returns the wrapped function result', async () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
 
-      const mockFn = mock(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10))
-        return 'result'
-      })
-
       const result = await timingCollector.timeAsync(
         TimingEventName.TEXT_WRITER,
-        mockFn,
+        async () => {
+          await new Promise(resolve => setTimeout(resolve, 5))
+          return 'result'
+        },
         interactionId,
       )
 
       expect(result).toBe('result')
-      expect(mockFn).toHaveBeenCalledTimes(1)
     })
 
-    test('should time even when function throws', async () => {
+    test('still ends timing when the function throws', async () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
 
-      const mockFn = mock(async () => {
-        throw new Error('Test error')
-      })
-
-      try {
-        await timingCollector.timeAsync(
+      await expect(
+        timingCollector.timeAsync(
           TimingEventName.TEXT_WRITER,
-          mockFn,
+          async () => {
+            throw new Error('boom')
+          },
           interactionId,
-        )
-        expect(false).toBe(true) // Should not reach here
-      } catch (error: any) {
-        expect(error.message).toBe('Test error')
-      }
+        ),
+      ).rejects.toThrow('boom')
 
-      // Timing should still be recorded and sent
       timingCollector.finalizeInteraction(interactionId)
-      await timingCollector.flush()
-
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
+      expectLogIncludes('Finalized interaction')
     })
 
-    test('should handle synchronous functions', async () => {
+    test('handles synchronous functions', async () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
-
-      const mockFn = mock(() => 'sync-result')
 
       const result = await timingCollector.timeAsync(
         TimingEventName.TEXT_WRITER,
-        mockFn,
+        () => 'sync-result',
         interactionId,
       )
 
       expect(result).toBe('sync-result')
-      expect(mockFn).toHaveBeenCalledTimes(1)
-    })
-
-    test('should handle null interaction ID', async () => {
-      const mockFn = mock(() => 'result')
-
-      const result = await timingCollector.timeAsync(
-        TimingEventName.TEXT_WRITER,
-        mockFn,
-        undefined,
-      )
-
-      expect(result).toBe('result')
-      expect(mockFn).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('Finalization', () => {
-    test('should finalize interaction and create report', async () => {
-      const interactionId = 'test-interaction-1'
-      timingCollector.startInteraction(interactionId)
-
-      timingCollector.startTiming(
-        TimingEventName.INTERACTION_ACTIVE,
-        interactionId,
-      )
-      timingCollector.endTiming(
-        TimingEventName.INTERACTION_ACTIVE,
-        interactionId,
-      )
-
-      timingCollector.finalizeInteraction(interactionId)
-
-      await timingCollector.flush()
-
-      // Should have sent a report
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
+    test('warns when finalizing an unknown interaction', () => {
+      timingCollector.finalizeInteraction('unknown-interaction')
+      expectWarnIncludes('Cannot finalize unknown interaction')
     })
 
-    test('should calculate total duration correctly', async () => {
+    test('summary reports the number of recorded events', () => {
       const interactionId = 'test-interaction-1'
       timingCollector.startInteraction(interactionId)
 
-      // First event
       timingCollector.startTiming(
         TimingEventName.INTERACTION_ACTIVE,
         interactionId,
@@ -271,127 +201,28 @@ describe('TimingCollector', () => {
         TimingEventName.INTERACTION_ACTIVE,
         interactionId,
       )
-
-      // Second event
       timingCollector.startTiming(TimingEventName.TEXT_WRITER, interactionId)
       timingCollector.endTiming(TimingEventName.TEXT_WRITER, interactionId)
 
       timingCollector.finalizeInteraction(interactionId)
 
-      await timingCollector.flush()
-
-      // Should have sent a report with both events
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
-      const calls = mockSubmitTimingReports.mock.calls as any[]
-      const reports = calls[0][0]
-      expect(reports).toHaveLength(1)
-      expect(reports[0].events).toHaveLength(2)
-    })
-
-    test('should not finalize if analytics disabled', async () => {
-      mockStore.get.mockImplementation((key: string) => {
-        if (key === 'settings') {
-          return { shareAnalytics: false }
-        }
-        return undefined
-      })
-
-      const interactionId = 'test-interaction-1'
-      timingCollector.startInteraction(interactionId)
-      timingCollector.finalizeInteraction(interactionId)
-
-      await timingCollector.flush()
-
-      // Should not send any reports
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
-    })
-
-    test('should warn when finalizing unknown interaction', async () => {
-      timingCollector.finalizeInteraction('unknown-interaction')
-
-      await timingCollector.flush()
-
-      // Should not send any reports
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('Flushing', () => {
-    test('should not flush if no reports', async () => {
-      await timingCollector.flush()
-      expect(mockSubmitTimingReports).not.toHaveBeenCalled()
-    })
-
-    test('should flush reports to server', async () => {
-      const interactionId = 'test-interaction-1'
-      timingCollector.startInteraction(interactionId)
-      timingCollector.startTiming(
-        TimingEventName.INTERACTION_ACTIVE,
-        interactionId,
-      )
-      timingCollector.endTiming(
-        TimingEventName.INTERACTION_ACTIVE,
-        interactionId,
-      )
-      timingCollector.finalizeInteraction(interactionId)
-
-      await timingCollector.flush()
-
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
-      const calls = mockSubmitTimingReports.mock.calls as any[]
-      const reports = calls[0][0]
-      expect(reports).toHaveLength(1)
-    })
-
-    test('should retry on flush failure', async () => {
-      mockSubmitTimingReports.mockRejectedValueOnce(new Error('Server error'))
-
-      const interactionId = 'test-interaction-1'
-      timingCollector.startInteraction(interactionId)
-      timingCollector.finalizeInteraction(interactionId)
-
-      await timingCollector.flush()
-
-      // Reports should be re-added to queue on failure
-      // Try flushing again - should retry with the same report
-      mockSubmitTimingReports.mockResolvedValueOnce({})
-      await timingCollector.flush()
-
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(2)
-    })
-
-    test('should send reports via grpc client', async () => {
-      const interactionId = 'test-interaction-1'
-      timingCollector.startInteraction(interactionId)
-      timingCollector.finalizeInteraction(interactionId)
-
-      await timingCollector.flush()
-
-      expect(mockSubmitTimingReports).toHaveBeenCalled()
-      const calls = mockSubmitTimingReports.mock.calls as any[]
-      const reports = calls[0][0]
-      expect(reports).toBeDefined()
-      expect(Array.isArray(reports)).toBe(true)
+      expectLogIncludes('(2 events,')
     })
   })
 
   describe('Multiple Interactions', () => {
-    test('should handle multiple interactions correctly', async () => {
-      const interactionId1 = 'test-interaction-1'
-      const interactionId2 = 'test-interaction-2'
+    test('finalizing one interaction leaves others intact', () => {
+      const id1 = 'test-interaction-1'
+      const id2 = 'test-interaction-2'
 
-      timingCollector.startInteraction(interactionId1)
-      timingCollector.startInteraction(interactionId2)
-      timingCollector.finalizeInteraction(interactionId2)
+      timingCollector.startInteraction(id1)
+      timingCollector.startInteraction(id2)
+      timingCollector.finalizeInteraction(id2)
 
-      await timingCollector.flush()
+      expectLogIncludes(`Finalized interaction: ${id2}`)
 
-      // Should have sent one report (only interactionId2 was finalized)
-      expect(mockSubmitTimingReports).toHaveBeenCalledTimes(1)
-      const calls = mockSubmitTimingReports.mock.calls as any[]
-      const reports = calls[0][0]
-      expect(reports).toHaveLength(1)
-      expect(reports[0].interactionId).toBe(interactionId2)
+      timingCollector.finalizeInteraction(id1)
+      expectLogIncludes(`Finalized interaction: ${id1}`)
     })
   })
 })

@@ -96,7 +96,6 @@ mock.module('@bufbuild/protobuf', () => ({
 // Mock protobuf schemas
 mock.module('@/app/generated/ito_pb', () => ({
   ItoService: { typeName: 'ItoService' },
-  TimingService: { typeName: 'TimingService' },
   // Mock all the schema objects
   CreateNoteRequestSchema: { typeName: 'CreateNoteRequest' },
   UpdateNoteRequestSchema: { typeName: 'UpdateNoteRequest' },
@@ -122,7 +121,6 @@ mock.module('@/app/generated/ito_pb', () => ({
     typeName: 'UpdateAdvancedSettingsRequest',
   },
   GetAdvancedSettingsRequestSchema: { typeName: 'GetAdvancedSettingsRequest' },
-  SubmitTimingReportsRequestSchema: { typeName: 'SubmitTimingReportsRequest' },
   PlaygroundRunRequestSchema: { typeName: 'PlaygroundRunRequest' },
   PlaygroundRunResponse: { typeName: 'PlaygroundRunResponse' },
   PlaygroundPolishRequestSchema: { typeName: 'PlaygroundPolishRequest' },

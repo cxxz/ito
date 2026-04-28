@@ -1,11 +1,9 @@
 import {
   ItoService,
-  TimingService,
   Note as NotePb,
   Interaction as InteractionPb,
   DictionaryItem as DictionaryItemPb,
   AdvancedSettings as AdvancedSettingsPb,
-  TimingReport,
   CreateNoteRequestSchema,
   UpdateNoteRequestSchema,
   DeleteNoteRequestSchema,
@@ -22,7 +20,6 @@ import {
   DeleteUserDataRequestSchema,
   GetAdvancedSettingsRequestSchema,
   UpdateAdvancedSettingsRequestSchema,
-  SubmitTimingReportsRequestSchema,
   TranscribeStreamRequest,
   TranscribeStreamResponse,
   TranscribePhase,
@@ -43,7 +40,6 @@ import { AdvancedSettings } from '../main/store'
 
 class GrpcClient {
   private client: ReturnType<typeof createClient<typeof ItoService>>
-  private timingClient: ReturnType<typeof createClient<typeof TimingService>>
   private mainWindow: BrowserWindow | null = null
   private sessionManager: Http2SessionManager
   private baseUrl: string
@@ -83,7 +79,6 @@ class GrpcClient {
     }
 
     this.client = createClient(ItoService, transport)
-    this.timingClient = createClient(TimingService, transport)
   }
 
   private resetTransport(reason?: string) {
@@ -270,7 +265,8 @@ class GrpcClient {
             console.log(
               '[gRPC Client] HTTP/2 error detected, resetting transport after stream failure',
             )
-            const reason = error instanceof Error ? error.message : 'HTTP/2 error'
+            const reason =
+              error instanceof Error ? error.message : 'HTTP/2 error'
             this.resetTransport(reason)
           }
           throw error
@@ -512,17 +508,6 @@ class GrpcClient {
         },
       })
       return await this.client.updateAdvancedSettings(request, {
-        headers: this.getHeaders(),
-      })
-    })
-  }
-
-  async submitTimingReports(reports: TimingReport[]) {
-    return this.withRetry(async () => {
-      const request = create(SubmitTimingReportsRequestSchema, {
-        reports,
-      })
-      return await this.timingClient.submitTimingReports(request, {
         headers: this.getHeaders(),
       })
     })

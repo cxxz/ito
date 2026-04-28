@@ -44,6 +44,12 @@ export class ItoSessionManager {
       return
     }
 
+    // Register the interaction with the timing collector before any code path
+    // (e.g. startGrpcStream → SERVER_DICTATION timing) tries to record events
+    // against it.
+    timingCollector.startInteraction()
+    timingCollector.startTiming(TimingEventName.INTERACTION_ACTIVE)
+
     // Begin gRPC stream immediately (note, no audio is flowing yet)
     // Pass a phase update callback to notify UI when polishing or editing starts
     this.streamResponsePromise = itoStreamController.startGrpcStream(phase => {
@@ -78,10 +84,6 @@ export class ItoSessionManager {
     this.contextFetchPromise = this.fetchAndSendContext().catch(error => {
       console.error('[itoSessionManager] Failed to fetch/send context:', error)
     })
-
-    // Start timing the interaction
-    timingCollector.startInteraction()
-    timingCollector.startTiming(TimingEventName.INTERACTION_ACTIVE)
 
     return interactionId
   }
