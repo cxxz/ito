@@ -44,6 +44,10 @@ export default defineConfig({
 
   renderer: {
     root: './app',
+    server: {
+      port: 5673,
+      strictPort: true,
+    },
     build: {
       sourcemap: true,
       rollupOptions: {
