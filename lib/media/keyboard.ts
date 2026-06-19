@@ -160,6 +160,17 @@ const doubleTapState = {
 }
 const activeTaps = new Map<string, { downTime: number; upTime?: number }>()
 
+function clearTapTrackingForKey(key: KeyName) {
+  const baseKey = getBaseKey(key)
+
+  activeTaps.delete(baseKey)
+
+  if (doubleTapState.lastTapSignature?.split('+').includes(baseKey)) {
+    doubleTapState.lastTapTime = 0
+    doubleTapState.lastTapSignature = null
+  }
+}
+
 // Function to check for and remove stuck keys
 function checkForStuckKeys() {
   const currentTime = Date.now()
@@ -205,6 +216,7 @@ function checkForStuckKeys() {
       )
       pressedKeys.delete(stuckKey)
       keyPressTimestamps.delete(stuckKey)
+      clearTapTrackingForKey(stuckKey)
     }
   }
 }

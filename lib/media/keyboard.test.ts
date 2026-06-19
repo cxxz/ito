@@ -31,6 +31,20 @@ const mockChildProcess = {
   _errorHandler: null as ((err: Error) => void) | null,
 }
 
+type TestKeyEvent = {
+  type: 'keydown' | 'keyup'
+  key: string
+  timestamp: string
+  raw_code: number | null
+}
+
+const emitKeyEvent = (event: TestKeyEvent) => {
+  mockChildProcess.stdout.emit(
+    'data',
+    Buffer.from(JSON.stringify(event) + '\n'),
+  )
+}
+
 const mockSpawn = mock(() => mockChildProcess)
 
 mock.module('child_process', () => ({
@@ -1262,6 +1276,74 @@ describe('Keyboard Module', () => {
       )
 
       expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Double-tap Shortcut Detection', () => {
+    test('should recover double-tap tracking after a shortcut key is removed as stuck', async () => {
+      mockMainStore.get.mockReturnValue({
+        isShortcutGloballyEnabled: true,
+        keyboardShortcuts: [
+          {
+            id: 'double-tap-control-test',
+            keys: ['control'],
+            mode: ItoMode.TRANSCRIBE,
+            triggerType: 'double-tap',
+          },
+        ],
+      } as any)
+
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+
+      emitKeyEvent({
+        type: 'keydown',
+        key: 'ControlLeft',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        raw_code: 17,
+      })
+
+      clock.tick(6000)
+
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Removing stuck key: control-left'),
+      )
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+
+      emitKeyEvent({
+        type: 'keydown',
+        key: 'ControlLeft',
+        timestamp: '2024-01-01T00:00:06.000Z',
+        raw_code: 17,
+      })
+      clock.tick(50)
+      emitKeyEvent({
+        type: 'keyup',
+        key: 'ControlLeft',
+        timestamp: '2024-01-01T00:00:06.050Z',
+        raw_code: 17,
+      })
+
+      clock.tick(100)
+
+      emitKeyEvent({
+        type: 'keydown',
+        key: 'ControlLeft',
+        timestamp: '2024-01-01T00:00:06.150Z',
+        raw_code: 17,
+      })
+      clock.tick(50)
+      emitKeyEvent({
+        type: 'keyup',
+        key: 'ControlLeft',
+        timestamp: '2024-01-01T00:00:06.200Z',
+        raw_code: 17,
+      })
+
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledWith(
+        ItoMode.TRANSCRIBE,
+      )
     })
   })
 
