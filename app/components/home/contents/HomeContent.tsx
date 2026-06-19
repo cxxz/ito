@@ -36,6 +36,7 @@ import { createStereo48kWavFromMonoPCM } from '@/app/utils/audioUtils'
 import { KeyName } from '@/lib/types/keyboard'
 import { usePlatform } from '@/app/hooks/usePlatform'
 import { calculateAllStats, InteractionStats } from '@/app/utils/userMetrics'
+import { IPC_EVENTS } from '@/lib/types/ipc'
 
 const StatCard = ({
   title,
@@ -125,17 +126,24 @@ export default function HomeContent() {
     loadInteractions()
 
     // Listen for new interactions
-    const handleInteractionCreated = () => {
+    const handleHistoryChanged = () => {
       loadInteractions()
     }
 
-    const unsubscribe = window.api.on(
+    const unsubscribeInteractionCreated = window.api.on(
       'interaction-created',
-      handleInteractionCreated,
+      handleHistoryChanged,
+    )
+    const unsubscribeHistoryPruned = window.api.on(
+      IPC_EVENTS.HISTORY_RETENTION_PRUNED,
+      handleHistoryChanged,
     )
 
     // Cleanup listener on unmount
-    return unsubscribe
+    return () => {
+      unsubscribeInteractionCreated()
+      unsubscribeHistoryPruned()
+    }
   }, [loadInteractions])
 
   // Cleanup audio instances on unmount

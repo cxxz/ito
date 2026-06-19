@@ -11,6 +11,7 @@ export const IPC_EVENTS = {
   SETTINGS_UPDATE: 'settings-update',
   ONBOARDING_UPDATE: 'onboarding-update',
   USER_AUTH_UPDATE: 'user-auth-update',
+  HISTORY_RETENTION_PRUNED: 'history-retention-pruned',
 } as const
 
 // IPC Payload Types

@@ -31,6 +31,7 @@ import { audioRecorderService } from '../media/audio'
 import { voiceInputService } from '../main/voiceInputService'
 import { itoSessionManager } from '../main/itoSessionManager'
 import { retranscribeInteraction } from '../main/interactions/retranscribeInteraction'
+import { historyRetentionService } from '../main/historyRetention'
 import { ItoMode } from '@/app/generated/ito_pb'
 import {
   getSelectedText,
@@ -51,9 +52,18 @@ export function registerIPC() {
     event.returnValue = store.get(val)
   })
   ipcMain.on('electron-store-set', (_event, key, val) => {
+    const previousHistoryRetentionDays = store.get(
+      'settings.historyRetentionDays',
+    )
     store.set(key, val)
     if (key === 'settings.isShortcutGloballyEnabled') {
       registerAllHotkeys()
+    }
+    if (
+      store.get('settings.historyRetentionDays') !==
+      previousHistoryRetentionDays
+    ) {
+      void historyRetentionService.pruneExpiredHistory()
     }
   })
 
@@ -326,6 +336,10 @@ export function registerIPC() {
 
   // Interactions
   handleIPC('interactions:get-all', () => {
+    // Kick off retention pruning in the background so loading the history list
+    // never blocks on networked remote deletes; the renderer refreshes when the
+    // HISTORY_RETENTION_PRUNED event fires.
+    void historyRetentionService.pruneExpiredHistory()
     const user_id = getCurrentUserId()
     return InteractionsTable.findAll(user_id)
   })
@@ -376,16 +390,11 @@ export function registerIPC() {
     console.log('Updating advanced settings:', advancedSettings)
     // Mark as dirty before the update to prevent sync from overwriting local changes
     store.set('advancedSettingsDirty', true)
-    try {
-      const { grpcClient } = await import('../clients/grpcClient')
-      const result = await grpcClient.updateAdvancedSettings(advancedSettings)
-      // Clear dirty flag after successful update
-      store.set('advancedSettingsDirty', false)
-      return result
-    } catch (error) {
-      // Keep dirty flag set so sync doesn't overwrite unsaved local changes
-      throw error
-    }
+    const { grpcClient } = await import('../clients/grpcClient')
+    const result = await grpcClient.updateAdvancedSettings(advancedSettings)
+    // Clear dirty flag after successful update
+    store.set('advancedSettingsDirty', false)
+    return result
   })
 
   // Server health check

@@ -8,6 +8,7 @@ import {
 } from '../constants/keyboard-defaults.js'
 import { KeyName, normalizeLegacyKey, TriggerType } from '../types/keyboard.js'
 import { KeyValueStore } from './sqlite/repo'
+import { DEFAULT_HISTORY_RETENTION_DAYS } from '../constants/history-retention'
 
 export interface KeyboardShortcutConfig {
   id: string
@@ -35,6 +36,7 @@ export interface SettingsStore {
   microphoneName: string
   isShortcutGloballyEnabled: boolean
   keyboardShortcuts: KeyboardShortcutConfig[]
+  historyRetentionDays: number
   firstName: string
   lastName: string
   email: string
@@ -146,6 +148,7 @@ export const defaultValues: AppStore = {
         triggerType: ITO_MODE_TRIGGER_DEFAULTS[ItoMode.EDIT],
       },
     ],
+    historyRetentionDays: DEFAULT_HISTORY_RETENTION_DAYS,
     firstName: '',
     lastName: '',
     email: '',

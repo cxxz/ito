@@ -56,6 +56,7 @@ import { initializeMicrophoneSelection } from '../media/microphoneSetUp'
 import { createAppTray } from './tray'
 import { initializeAutoUpdater } from './autoUpdaterWrapper'
 import { teardown } from './teardown'
+import { historyRetentionService } from './historyRetention'
 
 // Handle HTTP/2 session errors gracefully without showing pop-up
 // These errors can occur when the gRPC connection to the server dies unexpectedly
@@ -112,6 +113,7 @@ app.whenReady().then(async () => {
 
   // Start sync service
   syncService.start()
+  historyRetentionService.start()
 
   // Setup protocol handling for deep links
   setupProtocolHandling()

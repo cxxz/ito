@@ -32,12 +32,21 @@ mock.module('electron', () => {
     BrowserWindow: class MockBrowserWindow {
       webContents: any
 
+      static getAllWindows() {
+        return []
+      }
+
       constructor() {
         this.webContents = {
           send: () => {},
           on: () => {},
           openDevTools: () => {},
+          isDestroyed: () => false,
         }
+      }
+
+      isDestroyed() {
+        return false
       }
       loadURL() {}
       loadFile() {}

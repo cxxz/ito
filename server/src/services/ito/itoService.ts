@@ -41,6 +41,11 @@ import {
   handlePlaygroundPolish,
 } from '../playground/playgroundHandler.js'
 
+// Protocol contract: must stay in sync with the matching constant in
+// lib/clients/grpcClient.ts. Changing one side without the other silently
+// reverts permanent deletes to soft deletes.
+const PERMANENT_DELETE_HEADER = 'x-ito-permanent-delete'
+
 function dbToNotePb(dbNote: DbNote): Note {
   return create(NoteSchema, {
     id: dbNote.id,
@@ -264,7 +269,17 @@ export default (router: ConnectRouter) => {
       return dbToInteractionPb(updatedInteraction)
     },
 
-    async deleteInteraction(request) {
+    async deleteInteraction(request, context: HandlerContext) {
+      if (context.requestHeader.get(PERMANENT_DELETE_HEADER) === 'true') {
+        const user = context.values.get(kUser)
+        const userId = user?.sub
+        if (!userId) {
+          throw new ConnectError('User not authenticated', Code.Unauthenticated)
+        }
+        await InteractionsRepository.hardDeleteById(request.id, userId)
+        return {}
+      }
+
       await InteractionsRepository.softDelete(request.id)
       return {}
     },

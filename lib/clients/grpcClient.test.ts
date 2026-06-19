@@ -202,4 +202,22 @@ describe('GrpcClient Business Logic Tests', () => {
       expect(request.llm.llmBaseUrl).toBe('https://api.openai.com/v1')
     })
   })
+
+  describe('Interaction deletion', () => {
+    test('should mark retention deletes as permanent', async () => {
+      const { grpcClient } = await import('./grpcClient')
+
+      await grpcClient.deleteInteraction('interaction-123', {
+        permanent: true,
+      })
+
+      expect(mockGrpcClientMethods.deleteInteraction).toHaveBeenCalledTimes(1)
+
+      const [request, options] = (
+        mockGrpcClientMethods.deleteInteraction as any
+      ).mock.calls[0]
+      expect(request.id).toBe('interaction-123')
+      expect(options.headers.get('x-ito-permanent-delete')).toBe('true')
+    })
+  })
 })

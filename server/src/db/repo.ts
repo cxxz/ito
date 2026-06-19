@@ -197,6 +197,14 @@ export class InteractionsRepository {
     )
     return res.rowCount ?? 0
   }
+
+  static async hardDeleteById(id: string, userId: string): Promise<boolean> {
+    const res = await pool.query(
+      'DELETE FROM interactions WHERE id = $1 AND user_id = $2',
+      [id, userId],
+    )
+    return (res.rowCount ?? 0) > 0
+  }
 }
 
 export class DictionaryRepository {

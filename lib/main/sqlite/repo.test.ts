@@ -4,12 +4,14 @@ import { describe, test, expect, beforeEach, mock } from 'bun:test'
 const mockRun = mock()
 const mockGet = mock()
 const mockAll = mock()
+const mockExec = mock()
 
 // Mock the utils module
 mock.module('./utils', () => ({
   run: mockRun,
   get: mockGet,
   all: mockAll,
+  exec: mockExec,
 }))
 
 import { InteractionsTable, NotesTable, DictionaryTable } from './repo'
@@ -29,6 +31,7 @@ describe('InteractionsTable - Business Logic', () => {
     mockRun.mockClear()
     mockGet.mockClear()
     mockAll.mockClear()
+    mockExec.mockClear()
     resetSqliteMocks()
   })
 
@@ -56,7 +59,9 @@ describe('InteractionsTable - Business Logic', () => {
         asr_output: complexAsrOutput,
         llm_output: complexLlmOutput,
         raw_audio: null,
+        raw_audio_id: null,
         duration_ms: 3000,
+        sample_rate: 16000,
       }
 
       mockRun.mockResolvedValue(undefined)
@@ -175,7 +180,9 @@ describe('InteractionsTable - Business Logic', () => {
         asr_output: { transcript: 'hello' },
         llm_output: { response: 'hi' },
         raw_audio: null,
+        raw_audio_id: null,
         duration_ms: 1000,
+        sample_rate: 16000,
       }
 
       mockRun.mockResolvedValue(undefined)
@@ -202,7 +209,9 @@ describe('InteractionsTable - Business Logic', () => {
         asr_output: { transcript: 'anonymous' },
         llm_output: { response: 'Response' },
         raw_audio: null,
+        raw_audio_id: null,
         duration_ms: null,
+        sample_rate: null,
       }
 
       mockRun.mockResolvedValue(undefined)
@@ -214,6 +223,42 @@ describe('InteractionsTable - Business Logic', () => {
       expect(result.duration_ms).toBeNull()
       expect(result.id).toBeDefined()
       expect(result.created_at).toBeDefined()
+    })
+  })
+
+  describe('history retention', () => {
+    test('should find expired interaction ids for a user', async () => {
+      const cutoffIso = '2024-01-08T00:00:00.000Z'
+      mockAll.mockResolvedValue([{ id: 'old-1' }, { id: 'old-2' }])
+
+      const result = await InteractionsTable.findExpiredIds(
+        cutoffIso,
+        TEST_USER_ID,
+      )
+
+      expect(result).toEqual(['old-1', 'old-2'])
+      expect(mockAll).toHaveBeenCalledWith(
+        'SELECT id FROM interactions WHERE user_id = ? AND created_at < ?',
+        [TEST_USER_ID, cutoffIso],
+      )
+    })
+
+    test('should hard delete interactions and clear note references', async () => {
+      mockRun.mockResolvedValue(undefined)
+      mockExec.mockResolvedValue(undefined)
+
+      await InteractionsTable.hardDeleteByIds(['old-1', 'old-2'])
+
+      expect(mockRun).toHaveBeenCalledWith(
+        'UPDATE notes SET interaction_id = NULL WHERE interaction_id IN (?, ?)',
+        ['old-1', 'old-2'],
+      )
+      expect(mockRun).toHaveBeenCalledWith(
+        'DELETE FROM interactions WHERE id IN (?, ?)',
+        ['old-1', 'old-2'],
+      )
+      expect(mockExec).toHaveBeenCalledWith('BEGIN')
+      expect(mockExec).toHaveBeenCalledWith('COMMIT')
     })
   })
 })
@@ -312,7 +357,9 @@ describe('Timestamp Generation', () => {
       asr_output: {},
       llm_output: {},
       raw_audio: null,
+      raw_audio_id: null,
       duration_ms: null,
+      sample_rate: null,
     }
 
     mockRun.mockResolvedValue(undefined)

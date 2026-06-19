@@ -16,6 +16,10 @@ import {
   isReservedCombination,
 } from '../utils/keyboard'
 import { KeyName, TriggerType } from '@/lib/types/keyboard'
+import {
+  DEFAULT_HISTORY_RETENTION_DAYS,
+  normalizeHistoryRetentionDays,
+} from '@/lib/constants/history-retention'
 
 interface SettingsState {
   shareAnalytics: boolean
@@ -26,6 +30,7 @@ interface SettingsState {
   muteAudioWhenDictating: boolean
   microphoneDeviceId: string
   microphoneName: string
+  historyRetentionDays: number
   keyboardShortcuts: KeyboardShortcutConfig[]
   setShareAnalytics: (share: boolean) => void
   setLaunchAtLogin: (launch: boolean) => void
@@ -34,6 +39,7 @@ interface SettingsState {
   setInteractionSounds: (enabled: boolean) => void
   setMuteAudioWhenDictating: (enabled: boolean) => void
   setMicrophoneDeviceId: (deviceId: string, name: string) => void
+  setHistoryRetentionDays: (days: number) => void
   createKeyboardShortcut: (mode: ItoMode) => ShortcutResult
   removeKeyboardShortcut: (shortcutId: string) => void
   getItoModeShortcuts: (mode: ItoMode) => KeyboardShortcutConfig[]
@@ -62,6 +68,9 @@ const getInitialState = () => {
     muteAudioWhenDictating: storedSettings?.muteAudioWhenDictating ?? false,
     microphoneDeviceId: storedSettings?.microphoneDeviceId ?? 'default',
     microphoneName: storedSettings?.microphoneName ?? 'Default Microphone',
+    historyRetentionDays: normalizeHistoryRetentionDays(
+      storedSettings?.historyRetentionDays ?? DEFAULT_HISTORY_RETENTION_DAYS,
+    ),
     keyboardShortcuts: storedSettings?.keyboardShortcuts ?? [
       {
         keys: ITO_MODE_SHORTCUT_DEFAULTS[ItoMode.EDIT],
@@ -115,14 +124,16 @@ export const useSettingsStore = create<SettingsState>(set => {
     <K extends keyof SettingsState>(
       key: K,
       settingCategory: SettingCategory = 'general',
+      normalize?: (value: SettingsState[K]) => SettingsState[K],
     ) =>
     (value: SettingsState[K]) => {
+      const nextValue = normalize ? normalize(value) : value
       const currentValue = useSettingsStore.getState()[key]
-      const partialState = { [key]: value } as Partial<SettingsState>
+      const partialState = { [key]: nextValue } as Partial<SettingsState>
       analytics.trackSettings(ANALYTICS_EVENTS.SETTING_CHANGED, {
         setting_name: key as string,
         old_value: currentValue,
-        new_value: value,
+        new_value: nextValue,
         setting_category: settingCategory,
       })
       set(partialState)
@@ -175,6 +186,11 @@ export const useSettingsStore = create<SettingsState>(set => {
     setMuteAudioWhenDictating: createSetter(
       'muteAudioWhenDictating',
       'audio&mic',
+    ),
+    setHistoryRetentionDays: createSetter(
+      'historyRetentionDays',
+      'general',
+      normalizeHistoryRetentionDays,
     ),
     setMicrophoneDeviceId: (deviceId: string, name: string) => {
       const currentName = useSettingsStore.getState().microphoneName

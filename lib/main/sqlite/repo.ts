@@ -1,9 +1,10 @@
-import { run, get, all } from './utils'
+import { run, get, all, exec } from './utils'
 import type { Interaction, Note, DictionaryItem } from './models'
 import { v4 as uuidv4 } from 'uuid'
 
 // SQLite error codes (from better-sqlite3 and node-sqlite3)
 const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE'
+const SQLITE_MAX_BOUND_PARAMS = 900
 
 // Helper function to check if error is a unique constraint violation
 function isUniqueConstraintError(error: any): boolean {
@@ -62,6 +63,14 @@ function parseInteractionJsonFields(interaction: Interaction): Interaction {
   interaction.asr_output = parseJsonField(interaction.asr_output)
   interaction.llm_output = parseJsonField(interaction.llm_output)
   return interaction
+}
+
+function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize))
+  }
+  return chunks
 }
 
 // =================================================================
@@ -135,6 +144,42 @@ export class InteractionsTable {
     const query =
       'UPDATE interactions SET deleted_at = ?, updated_at = ? WHERE id = ?'
     await run(query, [new Date().toISOString(), new Date().toISOString(), id])
+  }
+
+  static async findExpiredIds(
+    cutoffIso: string,
+    user_id?: string,
+  ): Promise<string[]> {
+    const query = user_id
+      ? 'SELECT id FROM interactions WHERE user_id = ? AND created_at < ?'
+      : 'SELECT id FROM interactions WHERE user_id IS NULL AND created_at < ?'
+    const params = user_id ? [user_id, cutoffIso] : [cutoffIso]
+    const rows = await all<{ id: string }>(query, params)
+    return rows.map(row => row.id)
+  }
+
+  static async hardDeleteByIds(ids: string[]): Promise<void> {
+    for (const chunk of chunkArray(ids, SQLITE_MAX_BOUND_PARAMS)) {
+      const placeholders = chunk.map(() => '?').join(', ')
+      // Foreign keys aren't enforced on this connection, so notes must be
+      // unlinked manually. Wrap both statements in a transaction so a failure
+      // can't leave notes unlinked while the interactions still exist.
+      await exec('BEGIN')
+      try {
+        await run(
+          `UPDATE notes SET interaction_id = NULL WHERE interaction_id IN (${placeholders})`,
+          chunk,
+        )
+        await run(
+          `DELETE FROM interactions WHERE id IN (${placeholders})`,
+          chunk,
+        )
+        await exec('COMMIT')
+      } catch (error) {
+        await exec('ROLLBACK')
+        throw error
+      }
+    }
   }
 
   static async deleteAllUserData(userId: string): Promise<void> {

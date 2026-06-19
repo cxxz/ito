@@ -38,6 +38,11 @@ import { create } from '@bufbuild/protobuf'
 import { Note, Interaction, DictionaryItem } from '../main/sqlite/models'
 import { AdvancedSettings } from '../main/store'
 
+// Protocol contract: must stay in sync with the matching constant in
+// server/src/services/ito/itoService.ts. Changing one side without the other
+// silently reverts permanent deletes to soft deletes.
+const PERMANENT_DELETE_HEADER = 'x-ito-permanent-delete'
+
 class GrpcClient {
   private client: ReturnType<typeof createClient<typeof ItoService>>
   private mainWindow: BrowserWindow | null = null
@@ -393,13 +398,20 @@ class GrpcClient {
     })
   }
 
-  async deleteInteraction(interactionId: string) {
+  async deleteInteraction(
+    interactionId: string,
+    options?: { permanent?: boolean },
+  ) {
     return this.withRetry(async () => {
       const request = create(DeleteInteractionRequestSchema, {
         id: interactionId,
       })
+      const headers = this.getHeaders()
+      if (options?.permanent) {
+        headers.set(PERMANENT_DELETE_HEADER, 'true')
+      }
       return await this.client.deleteInteraction(request, {
-        headers: this.getHeaders(),
+        headers,
       })
     })
   }

@@ -1,5 +1,5 @@
 import { create } from '@bufbuild/protobuf'
-import { BrowserWindow } from 'electron'
+import { broadcastToAllWindows } from '../../window/broadcast'
 import { v4 as uuidv4 } from 'uuid'
 import {
   ContextInfoSchema,
@@ -166,13 +166,11 @@ const createInteractionRecord = async ({
     deleted_at: null,
   })
 
-  BrowserWindow.getAllWindows().forEach(window => {
-    window.webContents.send('interaction-created', {
-      id: interactionId,
-      transcript,
-      timestamp: now,
-      durationMs,
-    })
+  broadcastToAllWindows('interaction-created', {
+    id: interactionId,
+    transcript,
+    timestamp: now,
+    durationMs,
   })
 }
 

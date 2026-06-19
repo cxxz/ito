@@ -3,7 +3,7 @@ import mainStore from '../store'
 import { STORE_KEYS } from '../../constants/store-keys'
 import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
-import { BrowserWindow } from 'electron'
+import { broadcastToAllWindows } from '../../window/broadcast'
 import { timingCollector } from '../timing/TimingCollector'
 import { grpcClient } from '../../clients/grpcClient'
 import { ItoMode } from '@/app/generated/ito_pb'
@@ -113,13 +113,11 @@ export class InteractionManager {
       await InteractionsTable.upsert(interactionData)
 
       // Notify all windows about the new interaction
-      BrowserWindow.getAllWindows().forEach(window => {
-        window.webContents.send('interaction-created', {
-          id: this.currentInteractionId,
-          transcript,
-          timestamp: now,
-          durationMs,
-        })
+      broadcastToAllWindows('interaction-created', {
+        id: this.currentInteractionId,
+        transcript,
+        timestamp: now,
+        durationMs,
       })
     } catch (error) {
       log.error('[InteractionManager] Failed to create interaction:', error)
@@ -209,13 +207,11 @@ export class InteractionManager {
           deleted_at: null,
         })
 
-        BrowserWindow.getAllWindows().forEach(window => {
-          window.webContents.send('interaction-created', {
-            id: interactionId,
-            transcript: params.responseTranscript,
-            timestamp: now,
-            durationMs,
-          })
+        broadcastToAllWindows('interaction-created', {
+          id: interactionId,
+          transcript: params.responseTranscript,
+          timestamp: now,
+          durationMs,
         })
         return
       }
@@ -278,13 +274,11 @@ export class InteractionManager {
         deleted_at: serverInteraction.deletedAt || null,
       })
 
-      BrowserWindow.getAllWindows().forEach(window => {
-        window.webContents.send('interaction-created', {
-          id: interactionId,
-          transcript: rawTranscript,
-          timestamp: serverInteraction.createdAt || now,
-          durationMs,
-        })
+      broadcastToAllWindows('interaction-created', {
+        id: interactionId,
+        transcript: rawTranscript,
+        timestamp: serverInteraction.createdAt || now,
+        durationMs,
       })
     } catch (error) {
       console.error(

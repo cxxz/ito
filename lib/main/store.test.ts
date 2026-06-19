@@ -44,6 +44,7 @@ describe('KV-backed Store', () => {
     expect(settings.shareAnalytics).toBe(true)
     expect(settings.launchAtLogin).toBe(true)
     expect(settings.isShortcutGloballyEnabled).toBe(false)
+    expect(settings.historyRetentionDays).toBe(7)
     const main = store.get('main')
     expect(main.navExpanded).toBe(true)
   })

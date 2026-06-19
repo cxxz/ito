@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Switch } from '@/app/components/ui/switch'
 import { Button } from '@/app/components/ui/button'
 import { useSettingsStore } from '@/app/store/useSettingsStore'
 import { useWindowContext } from '@/app/components/window/WindowContext'
+import {
+  MAX_HISTORY_RETENTION_DAYS,
+  MIN_HISTORY_RETENTION_DAYS,
+} from '@/lib/constants/history-retention'
 
 export default function GeneralSettingsContent() {
   const [isDownloading, setIsDownloading] = useState(false)
@@ -12,13 +16,28 @@ export default function GeneralSettingsContent() {
     launchAtLogin,
     showItoBarAlways,
     showAppInDock,
+    historyRetentionDays,
     setShareAnalytics,
     setLaunchAtLogin,
     setShowItoBarAlways,
     setShowAppInDock,
+    setHistoryRetentionDays,
   } = useSettingsStore()
 
   const windowContext = useWindowContext()
+
+  // Hold the raw input text so the user can clear the field while typing.
+  // The store value is normalized on blur (and reflected back here).
+  const [retentionInput, setRetentionInput] = useState(
+    String(historyRetentionDays),
+  )
+  useEffect(() => {
+    setRetentionInput(String(historyRetentionDays))
+  }, [historyRetentionDays])
+
+  const commitRetentionDays = () => {
+    setHistoryRetentionDays(Number(retentionInput))
+  }
 
   const handleDownloadLogs = async () => {
     setIsDownloading(true)
@@ -123,6 +142,29 @@ export default function GeneralSettingsContent() {
               />
             </div>
           )}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Keep history</div>
+              <div className="text-xs text-gray-600 mt-1">
+                Permanently delete transcription history older than this many
+                days.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={retentionInput}
+                min={MIN_HISTORY_RETENTION_DAYS}
+                max={MAX_HISTORY_RETENTION_DAYS}
+                step={1}
+                onChange={e => setRetentionInput(e.target.value)}
+                onBlur={commitRetentionDays}
+                className="w-24 px-2 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <span className="text-sm text-gray-600">days</span>
+            </div>
+          </div>
         </div>
       </div>
 
