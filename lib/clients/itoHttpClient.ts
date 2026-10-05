@@ -1,5 +1,6 @@
 import store from '../main/store'
 import { STORE_KEYS } from '../constants/store-keys'
+import { requireServerConfig } from '../main/serverConfig'
 
 interface RequestOptions {
   requireAuth?: boolean
@@ -11,7 +12,7 @@ interface RequestOptions {
  */
 class ItoHttpClient {
   private getBaseUrl(): string {
-    return import.meta.env.VITE_GRPC_BASE_URL
+    return requireServerConfig().baseUrl
   }
 
   private getAccessToken(): string {
@@ -19,11 +20,7 @@ class ItoHttpClient {
   }
 
   private getApiKey(): string {
-    const apiKey = import.meta.env.VITE_GRPC_API_KEY
-    if (!apiKey) {
-      throw new Error('VITE_GRPC_API_KEY is required to make server requests')
-    }
-    return apiKey
+    return requireServerConfig().apiKey
   }
 
   async get(path: string, options: RequestOptions = {}) {

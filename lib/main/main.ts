@@ -38,17 +38,15 @@ import { registerIPC } from '../window/ipcEvents'
 import { registerDevIPC } from '../window/ipcDev'
 import { initializeDatabase } from './sqlite/db'
 import { setupProtocolHandling, processStartupProtocolUrl } from '../protocol'
-import {
-  startKeyListener,
-  restartKeyListener,
-  getLastKeyEventReceived,
-} from '../media/keyboard'
+import { restartKeyListener, getLastKeyEventReceived } from '../media/keyboard'
+import { ensureKeyboardListener } from '../media/keyboardPermission'
 // Import the grpcClient singleton
 import { grpcClient } from '../clients/grpcClient'
 import { preventAppNap } from './appNap'
 import { syncService } from './syncService'
 import { checkAccessibilityPermission } from '../utils/crossPlatform'
 import { initializeStore } from './store'
+import { initializeServerConfig } from './serverConfig'
 import { selectedTextReaderService } from '../media/selected-text-reader'
 import { macOSAccessibilityContextProvider } from '../media/macOSAccessibilityContextProvider'
 import { voiceInputService } from './voiceInputService'
@@ -100,6 +98,7 @@ app.whenReady().then(async () => {
   // Initialize KV-backed store and run migrations before anything reads/writes
   try {
     await initializeStore()
+    await initializeServerConfig()
   } catch (err) {
     console.error('Failed to initialize main store, quitting app.', err)
     return
@@ -148,10 +147,8 @@ app.whenReady().then(async () => {
     grpcClient.setMainWindow(mainWindow)
   }
 
-  if (checkAccessibilityPermission(false)) {
-    console.log('Accessibility permissions found, starting key listener.')
-    startKeyListener()
-  }
+  ensureKeyboardListener()
+  app.on('browser-window-focus', ensureKeyboardListener)
 
   const restartKeyListenerIfAllowed = (reason: string) => {
     if (!checkAccessibilityPermission(false)) {

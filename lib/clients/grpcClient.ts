@@ -37,26 +37,56 @@ import { BrowserWindow } from 'electron'
 import { create } from '@bufbuild/protobuf'
 import { Note, Interaction, DictionaryItem } from '../main/sqlite/models'
 import { AdvancedSettings } from '../main/store'
+import { requireServerConfig } from '../main/serverConfig'
 
 // Protocol contract: must stay in sync with the matching constant in
 // server/src/services/ito/itoService.ts. Changing one side without the other
 // silently reverts permanent deletes to soft deletes.
 const PERMANENT_DELETE_HEADER = 'x-ito-permanent-delete'
 
-class GrpcClient {
-  private client: ReturnType<typeof createClient<typeof ItoService>>
+export class GrpcClient {
+  private client!: ReturnType<typeof createClient<typeof ItoService>>
   private mainWindow: BrowserWindow | null = null
-  private sessionManager: Http2SessionManager
-  private baseUrl: string
-  private apiKey: string
+  private sessionManager!: Http2SessionManager
+  private baseUrl = ''
+  private apiKey = ''
+  private initialized = false
+  private requestsPaused = false
+  private activeRequests = 0
 
-  constructor() {
-    this.baseUrl = import.meta.env.VITE_GRPC_BASE_URL
-    this.apiKey = import.meta.env.VITE_GRPC_API_KEY
-    if (!this.apiKey) {
-      throw new Error('VITE_GRPC_API_KEY is required to start the app')
+  private ensureTransport() {
+    if (this.requestsPaused) {
+      throw new Error('Server settings are being updated. Please try again.')
     }
-    this.initializeTransport({ log: true })
+    const { baseUrl, apiKey } = requireServerConfig()
+    if (
+      !this.initialized ||
+      this.baseUrl !== baseUrl ||
+      this.apiKey !== apiKey
+    ) {
+      this.invalidateConnection()
+      this.baseUrl = baseUrl
+      this.apiKey = apiKey
+      this.initializeTransport({ log: true })
+    }
+  }
+
+  pauseRequests() {
+    if (this.activeRequests > 0) {
+      throw new Error(
+        'Wait for dictation or processing to finish before changing the server.',
+      )
+    }
+    this.requestsPaused = true
+  }
+
+  resumeRequests() {
+    this.requestsPaused = false
+  }
+
+  invalidateConnection() {
+    if (this.initialized) this.sessionManager.abort()
+    this.initialized = false
   }
 
   private initializeTransport(options?: { log?: boolean }) {
@@ -84,6 +114,7 @@ class GrpcClient {
     }
 
     this.client = createClient(ItoService, transport)
+    this.initialized = true
   }
 
   private resetTransport(reason?: string) {
@@ -107,6 +138,7 @@ class GrpcClient {
 
   // Public method to abort HTTP/2 session from external callers (e.g., uncaught exception handler)
   abortSession(reason?: string) {
+    if (!this.initialized) return
     console.log(
       '[gRPC Client] External abort requested, resetting HTTP/2 session',
     )
@@ -215,6 +247,8 @@ class GrpcClient {
     // But we need to handle HTTP/2 connection errors to prevent cascading failures
     const { retryOnHttp2Error = true } = options ?? {}
 
+    this.ensureTransport()
+    this.activeRequests++
     try {
       return await operation()
     } catch (error) {
@@ -232,6 +266,8 @@ class GrpcClient {
         }
       }
       throw error
+    } finally {
+      this.activeRequests--
     }
   }
 

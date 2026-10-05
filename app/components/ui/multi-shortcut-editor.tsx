@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import KeyboardKey from '@/app/components/ui/keyboard-key'
 import { ShortcutError } from '@/app/utils/keyboard'
-import { keyNameMap } from '@/lib/types/keyboard'
+import { captureShortcutKeys } from '@/app/utils/shortcutCapture'
+import { usePlatform } from '@/app/hooks/usePlatform'
 import { ItoMode } from '@/app/generated/ito_pb'
 import { useSettingsStore } from '@/app/store/useSettingsStore'
 import { Check, Pencil } from '@mynaui/icons-react'
@@ -42,6 +43,7 @@ export default function MultiShortcutEditor({
   // global editing lock
   const editorKey = useMemo(() => `multi-shortcut-editor:${mode}`, [mode])
   const { start, stop, activeEditor } = useShortcutEditingStore()
+  const platform = usePlatform()
 
   const rows = useMemo(
     () => (mode == null ? shortcuts : shortcuts.filter(s => s.mode === mode)),
@@ -56,7 +58,6 @@ export default function MultiShortcutEditor({
   const [error, setError] = useState<string>('')
   const [temporaryError, setTemporaryError] = useState<string>('')
 
-  const cleanupRef = useRef<(() => void) | null>(null)
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const beginEditExisting = (row: KeyboardShortcutConfig) => {
@@ -97,6 +98,8 @@ export default function MultiShortcutEditor({
       setError(getErrorMessage(result.error, result.errorMessage))
       return
     }
+    const newShortcut = useSettingsStore.getState().keyboardShortcuts.at(-1)
+    if (result.success && newShortcut) beginEditExisting(newShortcut)
   }
 
   const stopEdit = () => {
@@ -132,11 +135,9 @@ export default function MultiShortcutEditor({
     stopEdit()
   }
 
-  // capture keys (no normalization/cleanup here by request)
-  const handleKeyEvent = useCallback(
-    (event: any) => {
-      if (!editingId || event.type !== 'keydown') return
-      const key = keyNameMap[event.key] || event.key.toLowerCase()
+  const addDraftKey = useCallback(
+    (key: KeyName) => {
+      if (!editingId) return
       setDraftKeys(prev => {
         // If key exists, remove it
         if (prev.includes(key)) {
@@ -174,12 +175,8 @@ export default function MultiShortcutEditor({
   useEffect(() => {
     if (!editingId) return
 
-    cleanupRef.current = window.api.onKeyEvent(handleKeyEvent)
-
-    return () => {
-      cleanupRef.current?.()
-    }
-  }, [handleKeyEvent, editingId])
+    return captureShortcutKeys(addDraftKey)
+  }, [addDraftKey, editingId])
 
   // Ensure lock is released and global shortcuts re-enabled on unmount
   useEffect(() => {
@@ -203,7 +200,7 @@ export default function MultiShortcutEditor({
     'inline-flex items-center justify-center rounded-xl border border-neutral-300 ' +
     'px-3 py-1.5 text-neutral-700 hover:bg-neutral-50 h-9 min-w-[48px] border-0'
 
-  const isLockedByOther = activeEditor !== null && activeEditor !== editorKey
+  const isLocked = activeEditor !== null
 
   return (
     <div className={cx('w-82', className)}>
@@ -246,6 +243,8 @@ export default function MultiShortcutEditor({
                     <button
                       type="button"
                       onClick={() => saveEdit(row)}
+                      aria-label="Save shortcut"
+                      disabled={!draftKeys.length}
                       className={base}
                     >
                       <Check className="h-4 w-4" />
@@ -254,11 +253,12 @@ export default function MultiShortcutEditor({
                     <button
                       type="button"
                       onClick={() => beginEditExisting(row)}
+                      aria-label="Edit shortcut"
                       className={
                         base +
                         ' disabled:opacity-50 disabled:cursor-not-allowed'
                       }
-                      disabled={isLockedByOther}
+                      disabled={isLocked}
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
@@ -266,6 +266,27 @@ export default function MultiShortcutEditor({
                 </div>
               )}
             </div>
+            {isEditing && (
+              <div className="mt-2 flex items-center justify-end gap-3 text-sm">
+                {platform === 'darwin' && (
+                  <button
+                    type="button"
+                    className="text-neutral-600 hover:underline"
+                    aria-pressed={draftKeys.includes('fn')}
+                    onClick={() => addDraftKey('fn')}
+                  >
+                    {draftKeys.includes('fn') ? 'Remove Fn' : 'Add Fn'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="text-neutral-600 hover:underline"
+                  onClick={stopEdit}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             {editingId === row.id && (error || temporaryError) && (
               <div className="mt-1 text-xs text-red-500">
                 {temporaryError || error}
@@ -287,7 +308,7 @@ export default function MultiShortcutEditor({
             }}
             hidden={isMinimum}
             className="ml-auto text-red-400 hover:underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLockedByOther}
+            disabled={isLocked}
           >
             Delete
           </button>
@@ -300,12 +321,12 @@ export default function MultiShortcutEditor({
           <button
             type="button"
             onClick={() => {
-              if (isLockedByOther) return
+              if (isLocked) return
               addNew()
             }}
             hidden={isAtLimit}
             className="rounded-md border border-neutral-300 py-1 px-2 text-md text-neutral-800 disabled:opacity-50 hover:bg-neutral-50 disabled:cursor-not-allowed"
-            disabled={isLockedByOther}
+            disabled={isLocked}
           >
             Add another
           </button>

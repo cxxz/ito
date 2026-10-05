@@ -206,7 +206,7 @@ bun install
 
 # Configure environment
 cp .env.example .env
-# Edit .env to set VITE_LOCAL_SERVER_HOST to your remote server URL
+# Edit .env to set VITE_ITO_API_BASE_URL to your remote server URL
 
 # Build native Rust binaries
 ./build-binaries.sh --windows

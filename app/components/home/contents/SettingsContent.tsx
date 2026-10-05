@@ -4,6 +4,7 @@ import AudioSettingsContent from './settings/AudioSettingsContent'
 import AccountSettingsContent from './settings/AccountSettingsContent'
 import KeyboardSettingsContent from './settings/KeyboardSettingsContent'
 import AdvancedSettingsContent from './settings/AdvancedSettingsContent'
+import ServerSettingsContent from './settings/ServerSettingsContent'
 
 export default function SettingsContent() {
   const { settingsPage, setSettingsPage } = useMainStore()
@@ -14,6 +15,7 @@ export default function SettingsContent() {
     { id: 'audio', label: 'Audio & Mic', active: settingsPage === 'audio' },
     { id: 'account', label: 'Account', active: settingsPage === 'account' },
     { id: 'advanced', label: 'Advanced', active: settingsPage === 'advanced' },
+    { id: 'server', label: 'Server', active: settingsPage === 'server' },
   ]
 
   const renderSettingsContent = () => {
@@ -28,16 +30,18 @@ export default function SettingsContent() {
         return <AccountSettingsContent />
       case 'advanced':
         return <AdvancedSettingsContent />
+      case 'server':
+        return <ServerSettingsContent />
       default:
         return <GeneralSettingsContent />
     }
   }
 
   return (
-    <div className="w-full px-32">
+    <div className="w-full px-6 lg:px-16 xl:px-32">
       <div className="space-y-6">
         {/* Horizontal Tab/Pill Selector */}
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit mx-auto">
+        <div className="flex flex-wrap justify-center gap-1 p-1 bg-slate-100 rounded-lg w-fit mx-auto">
           {settingsMenuItems.map(item => (
             <button
               key={item.id}

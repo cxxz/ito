@@ -13,13 +13,13 @@ import {
 import { getUpdateStatus, installUpdateNow } from '../main/autoUpdaterWrapper'
 
 import {
-  startKeyListener,
   stopKeyListener,
   registerAllHotkeys,
   blockKeys,
   unblockKey,
   getBlockedKeys,
 } from '../media/keyboard'
+import { ensureKeyboardListener } from '../media/keyboardPermission'
 import { getPillWindow, mainWindow } from '../main/app'
 import { KeyValueStore } from '../main/sqlite/repo'
 import {
@@ -39,6 +39,13 @@ import {
   hasSelectedText,
 } from '../media/selected-text-reader'
 import { IPC_EVENTS } from '../types/ipc'
+import { checkServerHealth } from '../clients/serverHealth'
+import { getServerConnectionSettings } from '../main/serverConfig'
+import {
+  testServerConnection,
+  updateServerSettings,
+} from '../main/serverSettings'
+import type { ServerConnectionInput } from '../types/serverConnection'
 
 const handleIPC = (channel: string, handler: (...args: any[]) => any) => {
   ipcMain.handle(channel, handler)
@@ -47,6 +54,15 @@ const handleIPC = (channel: string, handler: (...args: any[]) => any) => {
 // This single function registers all IPC handlers for the application.
 // It should only be called once.
 export function registerIPC() {
+  handleIPC('server-connection:get', getServerConnectionSettings)
+  handleIPC('server-connection:save', (_event, input: ServerConnectionInput) =>
+    updateServerSettings(input),
+  )
+  handleIPC('server-connection:reset', () => updateServerSettings(null))
+  handleIPC('server-connection:test', (_event, input: ServerConnectionInput) =>
+    testServerConnection(input),
+  )
+
   // Store
   ipcMain.on('electron-store-get', (event, val) => {
     event.returnValue = store.get(val)
@@ -142,9 +158,12 @@ export function registerIPC() {
   })
 
   // Key Listener
-  handleIPC('start-key-listener-service', () => {
-    startKeyListener()
+  ipcMain.on('shortcut-editing', (event, editing: boolean) => {
+    // Let the focused editor capture combinations such as Cmd+W for validation
+    // instead of Electron's menu closing the settings window first.
+    event.sender.setIgnoreMenuShortcuts(editing === true)
   })
+  handleIPC('start-key-listener-service', ensureKeyboardListener)
   handleIPC('stop-key-listener', () => stopKeyListener())
   handleIPC('register-hotkeys', () => registerAllHotkeys())
   handleIPC('start-native-recording-service', () =>
@@ -284,7 +303,7 @@ export function registerIPC() {
   // Platform info
   handleIPC('get-platform', () => {
     // Allow overriding platform for testing cross-platform UI behavior
-    const overridePlatform = import.meta.env.VITE_OVERRIDE_PLATFORM
+    const overridePlatform = import.meta.env.VITE_ITO_PLATFORM_OVERRIDE
     if (overridePlatform) {
       log.info(
         `[Platform] Using override: ${overridePlatform} (actual: ${process.platform})`,
@@ -398,46 +417,7 @@ export function registerIPC() {
   })
 
   // Server health check
-  handleIPC('check-server-health', async () => {
-    try {
-      const response = await fetch(
-        `http://localhost:${import.meta.env.VITE_LOCAL_SERVER_PORT}`,
-        {
-          method: 'GET',
-        },
-      )
-
-      if (response.ok) {
-        const text = await response.text()
-        const isValidResponse = text.includes(
-          'Welcome to the Ito Connect RPC server',
-        )
-
-        return {
-          isHealthy: isValidResponse,
-          error: isValidResponse ? undefined : 'Invalid server response',
-        }
-      } else {
-        return {
-          isHealthy: false,
-          error: `Server responded with status: ${response.status}`,
-        }
-      }
-    } catch (error: any) {
-      const errorMessage =
-        error.name === 'TimeoutError' || error.name === 'AbortError'
-          ? 'Connection timed out'
-          : error.message?.includes('ECONNREFUSED') ||
-              error.message?.includes('fetch')
-            ? 'Local server not running'
-            : error.message || 'Unknown error occurred'
-
-      return {
-        isHealthy: false,
-        error: errorMessage,
-      }
-    }
-  })
+  handleIPC('check-server-health', checkServerHealth)
 
   // Debug methods
   handleIPC('debug:check-schema', async () => {

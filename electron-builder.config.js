@@ -19,7 +19,7 @@ const getWindowsResources = () =>
     to: `binaries/${binary}.exe`,
   }))
 
-const stage = process.env.ITO_ENV || 'prod'
+const stage = process.env.VITE_ITO_APP_ENV || 'prod'
 
 // For non-prod builds, ad-hoc sign the entire app bundle after packaging
 // This ensures all frameworks have the same identity, allowing TCC permissions to persist
@@ -85,7 +85,7 @@ module.exports = {
   asar: true,
   asarUnpack: ['resources/**'],
   extraMetadata: {
-    version: process.env.VITE_ITO_VERSION || '0.0.0-dev',
+    version: process.env.VITE_ITO_APP_VERSION || '0.0.0-dev',
   },
   protocols: {
     name: 'ito',

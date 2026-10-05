@@ -10,14 +10,15 @@ import mainStore from './store'
 import { STORE_KEYS } from '../constants/store-keys'
 import type { AdvancedSettings } from './store'
 import { mainWindow } from './app'
+import { getServerConfig, isServerConfigured } from './serverConfig'
 
 const LAST_SYNCED_AT_KEY = 'lastSyncedAt'
 
 function getEnvNamespace(): string {
-  const baseUrl = (import.meta.env?.VITE_GRPC_BASE_URL as string) || ''
+  const { baseUrl } = getServerConfig()
   try {
     const url = new URL(baseUrl)
-    return url.host || baseUrl || 'unknown'
+    return url.host + url.pathname.replace(/\/+$/, '')
   } catch {
     return baseUrl || 'unknown'
   }
@@ -30,6 +31,8 @@ function getLastSyncedAtKey(userId: string): string {
 
 export class SyncService {
   private isSyncing = false
+  private paused = false
+  private currentSync: Promise<void> | null = null
   private syncInterval: NodeJS.Timeout | null = null
   private static instance: SyncService
 
@@ -60,16 +63,34 @@ export class SyncService {
       clearInterval(this.syncInterval)
       this.syncInterval = null
     }
-    this.isSyncing = false
   }
 
-  private async runSync() {
-    if (this.isSyncing) {
-      return
+  // Finish a sync against its original server before applying new credentials.
+  public async withSyncPaused<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.paused)
+      throw new Error('Server settings are already being updated.')
+    this.paused = true
+    try {
+      await this.currentSync
+      return await operation()
+    } finally {
+      this.paused = false
     }
+  }
 
+  private runSync(): Promise<void> {
+    if (this.isSyncing || this.paused || !isServerConfigured()) {
+      return Promise.resolve()
+    }
     this.isSyncing = true
+    this.currentSync = this.performSync().finally(() => {
+      this.isSyncing = false
+      this.currentSync = null
+    })
+    return this.currentSync
+  }
 
+  private async performSync() {
     try {
       const user = mainStore.get(STORE_KEYS.USER_PROFILE) as any
       const userId = user?.id || 'self-hosted'
@@ -103,8 +124,6 @@ export class SyncService {
       }
     } catch (error) {
       console.error('Sync cycle failed:', error)
-    } finally {
-      this.isSyncing = false
     }
   }
 

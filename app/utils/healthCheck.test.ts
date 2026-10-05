@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
-import { checkLocalServerHealth } from './healthCheck'
+import { checkServerHealth } from './healthCheck'
 
 // Mock the window.api
 const mockApi = {
@@ -18,7 +18,7 @@ beforeEach(() => {
   mockApi.checkServerHealth.mockClear()
 })
 
-describe('checkLocalServerHealth', () => {
+describe('checkServerHealth', () => {
   test('should return healthy status when server is healthy', async () => {
     // Arrange
     const mockResponse = {
@@ -28,7 +28,7 @@ describe('checkLocalServerHealth', () => {
     mockApi.checkServerHealth.mockResolvedValue(mockResponse)
 
     // Act
-    const result = await checkLocalServerHealth()
+    const result = await checkServerHealth()
 
     // Assert
     expect(result).toEqual({
@@ -42,17 +42,17 @@ describe('checkLocalServerHealth', () => {
     // Arrange
     const mockResponse = {
       isHealthy: false,
-      error: 'Local server not running',
+      error: 'Unable to reach the Ito server',
     }
     mockApi.checkServerHealth.mockResolvedValue(mockResponse)
 
     // Act
-    const result = await checkLocalServerHealth()
+    const result = await checkServerHealth()
 
     // Assert
     expect(result).toEqual({
       isHealthy: false,
-      error: 'Local server not running',
+      error: 'Unable to reach the Ito server',
     })
     expect(mockApi.checkServerHealth).toHaveBeenCalledTimes(1)
   })
@@ -66,7 +66,7 @@ describe('checkLocalServerHealth', () => {
     mockApi.checkServerHealth.mockResolvedValue(mockResponse)
 
     // Act
-    const result = await checkLocalServerHealth()
+    const result = await checkServerHealth()
 
     // Assert
     expect(result).toEqual({
@@ -82,7 +82,7 @@ describe('checkLocalServerHealth', () => {
     mockApi.checkServerHealth.mockRejectedValue(error)
 
     // Act
-    const result = await checkLocalServerHealth()
+    const result = await checkServerHealth()
 
     // Assert
     expect(result).toEqual({
@@ -97,7 +97,7 @@ describe('checkLocalServerHealth', () => {
     mockApi.checkServerHealth.mockRejectedValue('Unknown error')
 
     // Act
-    const result = await checkLocalServerHealth()
+    const result = await checkServerHealth()
 
     // Assert
     expect(result).toEqual({
@@ -116,7 +116,7 @@ describe('checkLocalServerHealth', () => {
     mockApi.checkServerHealth.mockResolvedValue(mockResponse)
 
     // Act
-    const result = await checkLocalServerHealth()
+    const result = await checkServerHealth()
 
     // Assert
     expect(result).toEqual({

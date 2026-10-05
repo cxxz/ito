@@ -8,6 +8,9 @@ if [ -f .env ]; then
   export $(grep -v '^#' .env | sed 's/#.*//' | xargs)
 fi
 
+# Use one environment for both the compiled app and installer metadata.
+export VITE_ITO_APP_ENV="${VITE_ITO_APP_ENV:-prod}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -149,7 +152,7 @@ create_dmg() {
     print_status "Creating macOS DMG installer..."
     
     # Determine stage and handle notarization: only enforce in prod
-    local stage="${ITO_ENV:-prod}"
+    local stage="${VITE_ITO_APP_ENV:-prod}"
     if [ "$stage" = "prod" ]; then
       if [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
         print_error "Prod build requires notarization credentials (APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD)."
@@ -163,11 +166,6 @@ create_dmg() {
     fi
     
     print_info "Packaging application with Electron Builder (forcing DMG target)..."
-    # Ensure Vite embeds the stage for runtime
-    if [ -z "${VITE_ITO_ENV}" ]; then
-      export VITE_ITO_ENV="${ITO_ENV:-dev}"
-      print_info "Set VITE_ITO_ENV=${VITE_ITO_ENV} for build-time embedding"
-    fi
     bun run electron-vite build
     bunx electron-builder --config electron-builder.config.js --mac dmg zip --arm64 --publish=never
     
@@ -230,8 +228,8 @@ create_windows_installer() {
     docker run --rm --platform linux/amd64 \
       --env CSC_IDENTITY_AUTO_DISCOVERY=false \
       --env SKIP_SIGNING=true \
-      --env VITE_ITO_VERSION="${VITE_ITO_VERSION}" \
-      --env ITO_ENV="${ITO_ENV}" \
+      --env VITE_ITO_APP_VERSION="${VITE_ITO_APP_VERSION}" \
+      --env VITE_ITO_APP_ENV="${VITE_ITO_APP_ENV}" \
       -v "${PROJECT_PATH}":/project \
       electronuserland/builder:wine \
       bash -c "
@@ -262,7 +260,7 @@ create_windows_installer() {
         # Copy versioned installer to static name for CDN (supports prod and dev names)
         exe_path=\$(ls -t dist/Ito*.exe 2>/dev/null | head -n 1)
         if [ -n \"\$exe_path\" ]; then
-          dest_name=\$([ \"\${ITO_ENV:-dev}\" = \"prod\" ] && echo \"Ito-Installer.exe\" || echo \"Ito-\${ITO_ENV}-Installer.exe\")
+          dest_name=\$([ \"\${VITE_ITO_APP_ENV:-dev}\" = \"prod\" ] && echo \"Ito-Installer.exe\" || echo \"Ito-\${VITE_ITO_APP_ENV}-Installer.exe\")
           echo \"Copying \$exe_path to dist/\$dest_name for CDN\"
           cp \"\$exe_path\" \"dist/\$dest_name\"
         else
@@ -370,10 +368,10 @@ main() {
             create_dmg
             echo
             print_status "macOS build process completed successfully! 🎉"
-            if [ -z "${ITO_ENV}" ] || [ "${ITO_ENV}" = "prod" ]; then
+            if [ -z "${VITE_ITO_APP_ENV}" ] || [ "${VITE_ITO_APP_ENV}" = "prod" ]; then
               print_info "Your DMG installer is ready: dist/Ito-Installer.dmg"
             else
-              print_info "Your DMG installer is ready: dist/Ito-${ITO_ENV}-Installer.dmg"
+              print_info "Your DMG installer is ready: dist/Ito-${VITE_ITO_APP_ENV}-Installer.dmg"
             fi
             ;;
         "windows")

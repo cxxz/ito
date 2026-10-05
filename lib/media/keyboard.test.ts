@@ -78,6 +78,10 @@ mock.module('../constants/store-keys', () => ({
 }))
 
 const mockGetNativeBinaryPath = mock(() => '/path/to/global-key-listener')
+const mockCheckAccessibilityPermission = mock(() => false)
+mock.module('../utils/crossPlatform', () => ({
+  checkAccessibilityPermission: mockCheckAccessibilityPermission,
+}))
 mock.module('./native-interface', () => ({
   getNativeBinaryPath: mockGetNativeBinaryPath,
 }))
@@ -136,6 +140,18 @@ beforeEach(async () => {
 })
 
 describe('Keyboard Module', () => {
+  test('starts after Accessibility is granted without restarting Ito', async () => {
+    const { ensureKeyboardListener } = await import('./keyboardPermission')
+    mockCheckAccessibilityPermission.mockReturnValue(false)
+    expect(ensureKeyboardListener()).toBe(false)
+    expect(mockSpawn).not.toHaveBeenCalled()
+    mockCheckAccessibilityPermission.mockReturnValue(true)
+    expect(ensureKeyboardListener()).toBe(true)
+    expect(mockSpawn).toHaveBeenCalledTimes(1)
+    ensureKeyboardListener()
+    expect(mockSpawn).toHaveBeenCalledTimes(1)
+  })
+
   beforeEach(async () => {
     // Reset all mocks
     mockSpawn.mockClear()

@@ -72,7 +72,7 @@
    - **Microphone access**: Required for voice input
    - **Accessibility access**: Required for global keyboard shortcuts and text insertion
 
-4. **Run your Ito server**: Ito is self-hosted — point the app at your own running server (see [server/README.md](server/README.md)). The desktop app and server authenticate via a shared API key (`VITE_GRPC_API_KEY` ↔ `ITO_API_KEY`); no third-party identity provider is involved.
+4. **Run your Ito server**: Ito is self-hosted — point the app at your own running server (see [server/README.md](server/README.md)). The desktop app and server authenticate via a shared API key (`VITE_ITO_API_KEY` ↔ `ITO_API_KEY`); no third-party identity provider is involved.
 
 ### First Use
 
@@ -87,7 +87,7 @@
 
 ### Building from Source
 
-> **Important**: Ito requires a local transcription server for voice processing. See [server/README.md](server/README.md) for detailed server setup instructions.
+> **Important**: Ito requires a transcription server for voice processing, running locally or on a remote host. See [server/README.md](server/README.md) for detailed server setup instructions.
 
 ```bash
 # Clone the repository
@@ -117,6 +117,38 @@ cp .env.example .env
 # Start the Electron app (in a new terminal)
 bun run dev
 ```
+
+### Desktop environment variables
+
+Set the server URL and API key in **Settings → Server** in either `bun run dev` or a packaged app. **Test connection** checks both the endpoint and key without saving. **Save connection** persists the selection on this device and applies it without restarting. Finish active dictation or processing before saving; any background sync finishes against its original server first.
+
+Saved connection settings take precedence over the root `.env` / build defaults below. The key is encrypted with Electron's OS-backed credential storage and is not included in settings analytics or sync. Leave the key field blank to keep the current key for the same URL; a different URL requires entering its key. **Use defaults** removes the saved override. Development and release app profiles retain their own settings. An app built without an API URL or key can still open Settings for initial configuration.
+
+Other client settings are configured in the root `.env`. Server settings in `server/.env` are separate and unchanged.
+
+| Variable                      | Purpose                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_ITO_API_BASE_URL`       | Optional default server URL for RPC, HTTP requests, and health checks, such as `https://ito.example.com`. Overridden by Settings → Server. |
+| `VITE_ITO_API_KEY`            | Optional default API key; must match the server's `ITO_API_KEY`. Overridden by Settings → Server.                                          |
+| `VITE_ITO_APP_ENV`            | App environment (`local`, `dev`, or `prod`), used for the app name, data directory, and packaging.                                         |
+| `VITE_ITO_APP_VERSION`        | Displayed app version and installer version.                                                                                               |
+| `VITE_ITO_PLATFORM_OVERRIDE`  | Optional platform override for testing: `darwin`, `win32`, or `linux`.                                                                     |
+| `VITE_ITO_UPDATER_BUCKET`     | Optional S3 release bucket name; required to configure automatic updates.                                                                  |
+| `VITE_ITO_ENABLE_DEV_UPDATES` | Set to `true` to enable automatic updates in an unpackaged app. Defaults to disabled.                                                      |
+
+When upgrading an existing client `.env`, rename `VITE_GRPC_BASE_URL` → `VITE_ITO_API_BASE_URL`, `VITE_GRPC_API_KEY` → `VITE_ITO_API_KEY`, `VITE_ITO_VERSION` → `VITE_ITO_APP_VERSION`, `VITE_OVERRIDE_PLATFORM` → `VITE_ITO_PLATFORM_OVERRIDE`, `VITE_UPDATER_BUCKET` → `VITE_ITO_UPDATER_BUCKET`, and `VITE_DEV_AUTO_UPDATE` → `VITE_ITO_ENABLE_DEV_UPDATES`. Consolidate `ITO_ENV` / `VITE_ITO_ENV` into `VITE_ITO_APP_ENV`, preserving the existing environment value so the app continues using the same data directory. Remove `VITE_LOCAL_SERVER_PORT`; the health check now uses the API URL.
+
+Restart `bun run dev` after editing `.env`. Packaged apps must be rebuilt to change embedded defaults and other build settings; changing the API URL or key in **Settings → Server** requires no rebuild. Client environment variables are build configuration, not a secret store; never commit real credentials or embed a shared production key in a publicly distributed app.
+
+Release workflows accept the new GitHub variables `VITE_ITO_API_BASE_URL` and `VITE_ITO_UPDATER_BUCKET`, and the secret `VITE_ITO_API_KEY`. They also accept their former names as a migration fallback. Standard Electron, signing, and CI variables keep their tool-defined names.
+
+### Signed macOS distribution
+
+Use `bun run build:mac:signed` to build a Developer ID signed and notarized DMG
+with a local Keychain certificate and notarization profile. See
+[macOS signing and notarization](docs/MACOS_SIGNING.md) for setup, architecture
+selection, and resuming notarization without rebuilding. This release flow keeps
+API credentials out of the installer; configure them in **Settings → Server**.
 
 ### Build Requirements
 

@@ -1,12 +1,12 @@
 import { app } from 'electron'
 import path from 'path'
 
-let stage = process.env.ITO_ENV || import.meta.env.VITE_ITO_ENV
+let stage = process.env.VITE_ITO_APP_ENV || import.meta.env.VITE_ITO_APP_ENV
 if (!stage && import.meta.env.DEV) {
   stage = 'local'
 }
 if (!stage) {
-  throw new Error('ITO_ENV or VITE_ITO_ENV must be set to dev or prod')
+  throw new Error('VITE_ITO_APP_ENV must be set to local, dev, or prod')
 }
 
 // Guard against electron.app being undefined (can happen if module is loaded in wrong context)

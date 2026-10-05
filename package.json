@@ -1,6 +1,6 @@
 {
   "name": "ito",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Ito, a smart voice assistant",
   "main": "./out/main/main.js",
   "license": "MIT",
@@ -49,6 +49,7 @@
     "build:swift:mac": "cd native/cursor-context && swift build -c release",
     "build:win": "bash ./build-app.sh windows",
     "build:mac": "bash ./build-app.sh mac",
+    "build:mac:signed": "bash ./scripts/create_dist_dmg.sh",
     "generate:constants": "bun scripts/generate-constants.js",
     "build:app": "bash ./build-app.sh",
     "prepare": "husky"

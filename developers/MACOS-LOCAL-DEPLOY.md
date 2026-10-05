@@ -155,7 +155,7 @@ cp .env.example .env
 Edit the root `.env` file and ensure it has:
 
 ```bash
-VITE_GRPC_BASE_URL="http://localhost:3003"
+VITE_ITO_API_BASE_URL="http://localhost:3003"
 ```
 
 ## Step 6: Run the Ito App

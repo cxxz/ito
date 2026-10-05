@@ -1,10 +1,11 @@
 interface ImportMetaEnv {
-  readonly VITE_GRPC_BASE_URL: string
-  readonly VITE_POSTHOG_API_KEY: string
-  readonly VITE_POSTHOG_HOST: string
-  readonly VITE_UPDATER_BUCKET: string
-  readonly VITE_LOCAL_SERVER_PORT?: string
-  readonly VITE_ITO_VERSION: string
+  readonly VITE_ITO_API_BASE_URL?: string
+  readonly VITE_ITO_API_KEY?: string
+  readonly VITE_ITO_APP_ENV?: string
+  readonly VITE_ITO_APP_VERSION: string
+  readonly VITE_ITO_PLATFORM_OVERRIDE?: string
+  readonly VITE_ITO_UPDATER_BUCKET?: string
+  readonly VITE_ITO_ENABLE_DEV_UPDATES?: string
 }
 
 interface ImportMeta {

@@ -14,6 +14,7 @@ type SettingsPageType =
   | 'audio'
   | 'account'
   | 'advanced'
+  | 'server'
 
 interface MainStore {
   navExpanded: boolean

@@ -84,9 +84,14 @@ mock.module('@connectrpc/connect', () => ({
   },
 }))
 
+const mockCreateConnectTransport = mock(() => ({}))
+const mockAbortSession = mock()
+
 mock.module('@connectrpc/connect-node', () => ({
-  createConnectTransport: mock(() => ({})),
-  Http2SessionManager: class MockHttp2SessionManager {},
+  createConnectTransport: mockCreateConnectTransport,
+  Http2SessionManager: class MockHttp2SessionManager {
+    abort = mockAbortSession
+  },
 }))
 
 mock.module('@bufbuild/protobuf', () => ({
@@ -150,6 +155,71 @@ describe('GrpcClient Business Logic Tests', () => {
   })
 
   describe('Authentication', () => {
+    test('protects active requests while switching server configuration', async () => {
+      const { GrpcClient } = await import('./grpcClient')
+      const client = new GrpcClient()
+      let finishRequest!: (value: any) => void
+      mockGrpcClientMethods.listNotes.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishRequest = resolve
+          }),
+      )
+      const request = client.listNotesSince('2024-01-01T00:00:00Z')
+      expect(() => client.pauseRequests()).toThrow(
+        'Wait for dictation or processing to finish',
+      )
+      finishRequest({ notes: [] })
+      await request
+      client.pauseRequests()
+      await expect(
+        client.listNotesSince('2024-01-01T00:00:00Z'),
+      ).rejects.toThrow('Server settings are being updated')
+      client.invalidateConnection()
+      client.resumeRequests()
+      await expect(
+        client.listNotesSince('2024-01-01T00:00:00Z'),
+      ).resolves.toEqual([])
+    })
+
+    test('can construct a client without environment credentials', async () => {
+      const { GrpcClient } = await import('./grpcClient')
+      const key = process.env.VITE_ITO_API_KEY
+      delete process.env.VITE_ITO_API_KEY
+      try {
+        const client = new GrpcClient()
+        await expect(
+          client.listNotesSince('2024-01-01T00:00:00Z'),
+        ).rejects.toThrow('Settings → Server')
+      } finally {
+        process.env.VITE_ITO_API_KEY = key
+      }
+    })
+
+    test('recreates the transport when the configured URL and key change', async () => {
+      const { GrpcClient } = await import('./grpcClient')
+      const client = new GrpcClient()
+      await client.listNotesSince('2024-01-01T00:00:00Z')
+      const previousUrl = process.env.VITE_ITO_API_BASE_URL
+      const previousKey = process.env.VITE_ITO_API_KEY
+      process.env.VITE_ITO_API_BASE_URL = 'https://new.ito.test'
+      process.env.VITE_ITO_API_KEY = 'new-key'
+      try {
+        await client.listNotesSince('2024-01-01T00:00:00Z')
+        expect(mockCreateConnectTransport).toHaveBeenLastCalledWith(
+          expect.objectContaining({ baseUrl: 'https://new.ito.test' }),
+        )
+        const [, options] = (
+          mockGrpcClientMethods.listNotes as any
+        ).mock.calls.at(-1)
+        expect(options.headers.get('x-ito-api-key')).toBe('new-key')
+        expect(mockAbortSession).toHaveBeenCalled()
+      } finally {
+        process.env.VITE_ITO_API_BASE_URL = previousUrl
+        process.env.VITE_ITO_API_KEY = previousKey
+      }
+    })
+
     test('should handle operations with no auth token gracefully', async () => {
       const { grpcClient } = await import('./grpcClient')
 
@@ -166,6 +236,16 @@ describe('GrpcClient Business Logic Tests', () => {
       // Should proceed with operation (empty headers but no crash)
       const result = await grpcClient.createNote(testNote)
       expect(result).toBeDefined()
+
+      const [, options] = (mockGrpcClientMethods.createNote as any).mock
+        .calls[0]
+      expect(options.headers.get('x-ito-api-key')).toBe('test-api-key')
+      expect(mockCreateConnectTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseUrl: 'https://ito.test',
+          httpVersion: '2',
+        }),
+      )
     })
   })
 

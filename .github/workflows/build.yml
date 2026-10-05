@@ -30,30 +30,41 @@ jobs:
           targets: 'x86_64-apple-darwin,aarch64-apple-darwin'
 
       - name: Set up environment
+        env:
+          VITE_ITO_API_BASE_URL: ${{ vars.VITE_ITO_API_BASE_URL || vars.VITE_GRPC_BASE_URL }}
+          VITE_ITO_API_KEY: ${{ secrets.VITE_ITO_API_KEY || secrets.VITE_GRPC_API_KEY }}
+          VITE_ITO_UPDATER_BUCKET: ${{ vars.VITE_ITO_UPDATER_BUCKET || vars.VITE_UPDATER_BUCKET }}
+          VITE_ITO_APP_ENV: ${{ github.event.release.target_commitish == 'main' && 'prod' || 'dev' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          CSC_LINK: release.p12
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
-          echo "VITE_AUTH0_DOMAIN=\"${{ secrets.VITE_AUTH0_DOMAIN }}\"" >> .env
-          echo "VITE_AUTH0_CLIENT_ID=\"${{ secrets.VITE_AUTH0_CLIENT_ID }}\"" >> .env
-          echo "VITE_AUTH0_AUDIENCE=\"${{ secrets.VITE_AUTH0_AUDIENCE }}\"" >> .env
-          echo "VITE_POSTHOG_API_KEY=\"${{ secrets.VITE_POSTHOG_API_KEY }}\"" >> .env
-          echo "VITE_POSTHOG_HOST=\"${{ secrets.VITE_POSTHOG_HOST }}\"" >> .env
-          echo "VITE_GRPC_BASE_URL=\"${{ vars.VITE_GRPC_BASE_URL }}\"" >> .env
-          echo "VITE_UPDATER_BUCKET=\"${{ vars.VITE_UPDATER_BUCKET }}\"" >> .env
-          echo "VITE_SENTRY_DSN=\"${{ vars.VITE_SENTRY_DSN }}\"" >> .env
-          echo "VITE_SENTRY_ENV=\"${{ vars.VITE_SENTRY_ENV }}\"" >> .env
-          echo "VITE_SENTRY_TRACES_SAMPLE_RATE=\"${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}\"" >> .env
-          echo "VITE_SENTRY_PROFILES_SAMPLE_RATE=\"${{ vars.VITE_SENTRY_PROFILES_SAMPLE_RATE }}\"" >> .env
-          echo "VITE_ITO_VERSION=\"${GITHUB_REF#refs/tags/v}\"" >> .env
-          echo "ITO_ENV=\"${{ github.event.release.target_commitish == 'main' && 'prod' || 'dev' }}\"" >> .env
-          echo "VITE_ITO_ENV=\"${{ github.event.release.target_commitish == 'main' && 'prod' || 'dev' }}\"" >> .env
-          echo "APPLE_ID=\"${{ secrets.APPLE_ID }}\"" >> .env
-          echo "APPLE_TEAM_ID=\"${{ secrets.APPLE_TEAM_ID }}\"" >> .env
-          echo "APPLE_APP_SPECIFIC_PASSWORD=\"${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}\"" >> .env
-          echo "CSC_LINK=\"release.p12\"" >> .env
-          echo "CSC_KEY_PASSWORD=\"${{ secrets.MACOS_CERT_PASSWORD }}\"" >> .env
-          echo "GH_TOKEN=\"${{ secrets.GITHUB_TOKEN }}\"" >> .env
-          echo "GRPC_BASE_URL=\"${{ vars.GRPC_BASE_URL }}\"" >> .env
-          echo "Created .env file:"
-          cat .env
+          python3 - <<'PYENV'
+          import json
+          import os
+
+          keys = (
+              "VITE_ITO_API_BASE_URL",
+              "VITE_ITO_API_KEY",
+              "VITE_ITO_UPDATER_BUCKET",
+              "VITE_ITO_APP_ENV",
+              "GH_TOKEN",
+              "APPLE_ID",
+              "APPLE_TEAM_ID",
+              "APPLE_APP_SPECIFIC_PASSWORD",
+              "CSC_LINK",
+              "CSC_KEY_PASSWORD",
+          )
+          with open(".env", "w") as env_file:
+              for key in keys:
+                  env_file.write(f"{key}={json.dumps(os.environ[key])}\n")
+              version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+              env_file.write(f"VITE_ITO_APP_VERSION={json.dumps(version)}\n")
+          print("Created client .env file (values hidden).")
+          PYENV
 
       - name: Decode and install certificate
         run: |
@@ -179,25 +190,31 @@ jobs:
         run: bun install
 
       - name: Set up environment
+        env:
+          VITE_ITO_API_BASE_URL: ${{ vars.VITE_ITO_API_BASE_URL || vars.VITE_GRPC_BASE_URL }}
+          VITE_ITO_API_KEY: ${{ secrets.VITE_ITO_API_KEY || secrets.VITE_GRPC_API_KEY }}
+          VITE_ITO_UPDATER_BUCKET: ${{ vars.VITE_ITO_UPDATER_BUCKET || vars.VITE_UPDATER_BUCKET }}
+          VITE_ITO_APP_ENV: ${{ github.event.release.target_commitish == 'main' && 'prod' || 'dev' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "VITE_AUTH0_DOMAIN=\"${{ secrets.VITE_AUTH0_DOMAIN }}\"" >> .env
-          echo "VITE_AUTH0_CLIENT_ID=\"${{ secrets.VITE_AUTH0_CLIENT_ID }}\"" >> .env
-          echo "VITE_AUTH0_AUDIENCE=\"${{ secrets.VITE_AUTH0_AUDIENCE }}\"" >> .env
-          echo "VITE_POSTHOG_API_KEY=\"${{ secrets.VITE_POSTHOG_API_KEY }}\"" >> .env
-          echo "VITE_POSTHOG_HOST=\"${{ secrets.VITE_POSTHOG_HOST }}\"" >> .env
-          echo "VITE_GRPC_BASE_URL=\"${{ vars.VITE_GRPC_BASE_URL }}\"" >> .env
-          echo "VITE_UPDATER_BUCKET=\"${{ vars.VITE_UPDATER_BUCKET }}\"" >> .env
-          echo "VITE_SENTRY_DSN=\"${{ vars.VITE_SENTRY_DSN }}\"" >> .env
-          echo "VITE_SENTRY_ENV=\"${{ vars.VITE_SENTRY_ENV }}\"" >> .env
-          echo "VITE_SENTRY_TRACES_SAMPLE_RATE=\"${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}\"" >> .env
-          echo "VITE_SENTRY_PROFILES_SAMPLE_RATE=\"${{ vars.VITE_SENTRY_PROFILES_SAMPLE_RATE }}\"" >> .env
-          echo "VITE_ITO_VERSION=\"${GITHUB_REF#refs/tags/v}\"" >> .env
-          echo "ITO_ENV=\"${{ github.event.release.target_commitish == 'main' && 'prod' || 'dev' }}\"" >> .env
-          echo "VITE_ITO_ENV=\"${{ github.event.release.target_commitish == 'main' && 'prod' || 'dev' }}\"" >> .env
-          echo "GH_TOKEN=\"${{ secrets.GITHUB_TOKEN }}\"" >> .env
-          echo "GRPC_BASE_URL=\"${{ vars.GRPC_BASE_URL }}\"" >> .env
-          echo "Created .env file:"
-          cat .env
+          python3 - <<'PYENV'
+          import json
+          import os
+
+          keys = (
+              "VITE_ITO_API_BASE_URL",
+              "VITE_ITO_API_KEY",
+              "VITE_ITO_UPDATER_BUCKET",
+              "VITE_ITO_APP_ENV",
+              "GH_TOKEN",
+          )
+          with open(".env", "w") as env_file:
+              for key in keys:
+                  env_file.write(f"{key}={json.dumps(os.environ[key])}\n")
+              version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+              env_file.write(f"VITE_ITO_APP_VERSION={json.dumps(version)}\n")
+          print("Created client .env file (values hidden).")
+          PYENV
 
       - name: Build and package Windows application (unsigned)
         env:

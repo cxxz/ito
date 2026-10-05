@@ -3,7 +3,6 @@ import log from 'electron-log'
 import { autoUpdater } from 'electron-updater'
 import { mainWindow } from './app'
 import { hardKillAll, teardown } from './teardown'
-import { ITO_ENV } from './env'
 
 export interface UpdateStatus {
   updateAvailable: boolean
@@ -26,8 +25,9 @@ export function initializeAutoUpdater() {
     updateDownloaded: false,
   }
 
-  // Allow auto-updater in development mode if VITE_DEV_AUTO_UPDATE is set
-  const enableDevUpdater = import.meta.env.VITE_DEV_AUTO_UPDATE === 'true'
+  // Allow auto-updater in development mode if VITE_ITO_ENABLE_DEV_UPDATES is set
+  const enableDevUpdater =
+    import.meta.env.VITE_ITO_ENABLE_DEV_UPDATES === 'true'
 
   if (app.isPackaged || enableDevUpdater) {
     try {
@@ -37,9 +37,11 @@ export function initializeAutoUpdater() {
           : 'Development auto-updater enabled, initializing...',
       )
 
-      const bucket = import.meta.env.VITE_UPDATER_BUCKET
+      const bucket = import.meta.env.VITE_ITO_UPDATER_BUCKET
       if (!bucket) {
-        throw new Error('VITE_UPDATER_BUCKET environment variable is not set')
+        throw new Error(
+          'VITE_ITO_UPDATER_BUCKET environment variable is not set',
+        )
       }
 
       // Force dev updates if in development mode

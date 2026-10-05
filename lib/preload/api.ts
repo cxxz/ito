@@ -2,6 +2,11 @@ import { IpcRendererEvent, ipcRenderer } from 'electron'
 import { AdvancedSettings } from '../main/store'
 import { DbResult } from '../main/sqlite/repo'
 import { DictionaryItem } from '../main/sqlite/models'
+import type {
+  ServerConnectionInput,
+  ServerConnectionSettings,
+} from '../types/serverConnection'
+import type { IpcResult } from '../types/ipc'
 
 const api = {
   /**
@@ -39,6 +44,8 @@ const api = {
   startKeyListener: () => ipcRenderer.invoke('start-key-listener-service'),
   stopKeyListener: () => ipcRenderer.invoke('stop-key-listener'),
   registerHotkeys: () => ipcRenderer.invoke('register-hotkeys'),
+  setShortcutEditing: (editing: boolean) =>
+    ipcRenderer.send('shortcut-editing', editing),
   startNativeRecording: () => ipcRenderer.invoke('start-native-recording'),
   stopNativeRecording: () => ipcRenderer.invoke('stop-native-recording'),
   getNativeAudioDevices: () => ipcRenderer.invoke('get-native-audio-devices'),
@@ -197,7 +204,20 @@ const api = {
     return ipcRenderer.invoke('update-advanced-settings', advancedSettings)
   },
 
-  // Check if the local server is healthy and accessible
+  serverConnection: {
+    get: (): Promise<ServerConnectionSettings> =>
+      ipcRenderer.invoke('server-connection:get'),
+    save: (
+      input: ServerConnectionInput,
+    ): Promise<IpcResult<ServerConnectionSettings>> =>
+      ipcRenderer.invoke('server-connection:save', input),
+    reset: (): Promise<IpcResult<ServerConnectionSettings>> =>
+      ipcRenderer.invoke('server-connection:reset'),
+    test: (input: ServerConnectionInput): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke('server-connection:test', input),
+  },
+
+  // Check if the configured server is healthy and accessible
   checkServerHealth: () => {
     return ipcRenderer.invoke('check-server-health')
   },

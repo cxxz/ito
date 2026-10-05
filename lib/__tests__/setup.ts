@@ -1,6 +1,11 @@
 import { mock, afterEach, beforeEach, beforeAll } from 'bun:test'
 import { promises as fs } from 'fs'
 
+// Keep client tests independent of local credentials and cloud endpoints.
+process.env.VITE_ITO_API_BASE_URL = 'https://ito.test'
+process.env.VITE_ITO_API_KEY = 'test-api-key'
+process.env.VITE_ITO_APP_ENV = 'dev'
+
 // Simple, direct electron mock following Bun documentation pattern
 mock.module('electron', () => {
   let userDataPath = '/tmp/test-ito-app'
@@ -28,6 +33,12 @@ mock.module('electron', () => {
         hide: () => {},
         show: () => {},
       },
+    },
+    safeStorage: {
+      isEncryptionAvailable: () => true,
+      encryptString: (value: string) => Buffer.from(`test-encrypted:${value}`),
+      decryptString: (value: Buffer) =>
+        value.toString().replace(/^test-encrypted:/, ''),
     },
     BrowserWindow: class MockBrowserWindow {
       webContents: any

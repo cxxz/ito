@@ -4,6 +4,7 @@ import os from 'os'
 import store, { getCurrentUserId } from './store'
 import { STORE_KEYS } from '../constants/store-keys'
 import { interactionManager } from './interactions/InteractionManager'
+import { getServerConfig } from './serverConfig'
 
 const LOG_QUEUE_KEY = 'log_queue:events'
 
@@ -61,8 +62,8 @@ export function initializeLogging() {
     const take = Math.min(50, queue.length)
     const batch = queue.slice(0, take)
     try {
-      const baseUrl = import.meta.env.VITE_GRPC_BASE_URL
-      if (!baseUrl) return
+      const { baseUrl, apiKey } = getServerConfig()
+      if (!baseUrl || !apiKey) return
 
       const url = new URL('/logs', baseUrl)
       const body = {
@@ -73,6 +74,7 @@ export function initializeLogging() {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          'x-ito-api-key': apiKey,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(body),

@@ -150,6 +150,44 @@ describe('SyncService Integration Tests', () => {
   })
 
   describe('Sync Service Lifecycle', () => {
+    test('waits for the current sync and prevents a new cycle while settings change', async () => {
+      let releaseRead!: (value: any[]) => void
+      let notifyReadStarted!: () => void
+      const readStarted = new Promise<void>(resolve => {
+        notifyReadStarted = resolve
+      })
+      mockGrpcClient.listNotesSince.mockImplementationOnce(() => {
+        notifyReadStarted()
+        return new Promise(resolve => {
+          releaseRead = resolve
+        })
+      })
+      const activeSync = (syncService as any).runSync()
+      await readStarted
+      const applySettings = mock(async () => {
+        await (syncService as any).runSync()
+        return 'saved'
+      })
+      const change = syncService.withSyncPaused(applySettings)
+      await Promise.resolve()
+      expect(applySettings).not.toHaveBeenCalled()
+      releaseRead([])
+      await activeSync
+      expect(await change).toBe('saved')
+      expect(mockGrpcClient.listNotesSince).toHaveBeenCalledTimes(1)
+    })
+
+    test('skips network sync until a server is configured', async () => {
+      const key = process.env.VITE_ITO_API_KEY
+      delete process.env.VITE_ITO_API_KEY
+      try {
+        await (syncService as any).runSync()
+        expect(mockGrpcClient.listNotesSince).not.toHaveBeenCalled()
+      } finally {
+        process.env.VITE_ITO_API_KEY = key
+      }
+    })
+
     test('should use self-hosted fallback when no user is logged in', async () => {
       mockMainStore.get.mockReturnValue(null) // No user profile
 

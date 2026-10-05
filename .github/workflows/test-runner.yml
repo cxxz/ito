@@ -8,6 +8,7 @@ jobs:
     runs-on: macos-latest
     env:
       ITO_ENV: dev
+      VITE_ITO_APP_ENV: dev
 
     steps:
       - name: Checkout repository
@@ -16,12 +17,14 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v1
 
-      - name: Set ITO_ENV based on branch
+      - name: Set client and server environments based on branch
         run: |
           if [[ "${GITHUB_REF_NAME}" == "main" || "${GITHUB_BASE_REF}" == "main" ]]; then
             echo "ITO_ENV=prod" >> "$GITHUB_ENV"
+            echo "VITE_ITO_APP_ENV=prod" >> "$GITHUB_ENV"
           else
             echo "ITO_ENV=dev" >> "$GITHUB_ENV"
+            echo "VITE_ITO_APP_ENV=dev" >> "$GITHUB_ENV"
           fi
 
       - name: Install dependencies
