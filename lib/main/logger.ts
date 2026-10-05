@@ -1,4 +1,5 @@
 import log from 'electron-log'
+import { BatchedLogQueue } from './logging/BatchedLogQueue'
 import { app } from 'electron'
 import os from 'os'
 import store, { getCurrentUserId } from './store'
@@ -45,14 +46,14 @@ export function initializeLogging() {
     loggedAtIso: string
   }
 
-  const MAX_QUEUE = 5000
   const initialEvents =
     (store.get(LOG_QUEUE_KEY) as LogEvent[] | undefined) ?? []
-  const queue: LogEvent[] = [...initialEvents]
-
-  const persistQueue = () => {
-    store.set(LOG_QUEUE_KEY, queue)
-  }
+  const persistenceError = console.error.bind(console)
+  const queue = new BatchedLogQueue<LogEvent>(
+    initialEvents,
+    events => store.set(LOG_QUEUE_KEY, events),
+    error => persistenceError('Failed to persist log batch:', error),
+  )
   let isSending = false
   let flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -60,7 +61,7 @@ export function initializeLogging() {
     if (isSending || queue.length === 0) return
     isSending = true
     const take = Math.min(50, queue.length)
-    const batch = queue.slice(0, take)
+    const batch = queue.take(take)
     try {
       const { baseUrl, apiKey } = getServerConfig()
       if (!baseUrl || !apiKey) return
@@ -72,6 +73,7 @@ export function initializeLogging() {
       const token = (store.get(STORE_KEYS.ACCESS_TOKEN) as string | null) || ''
       const res = await fetch(url.toString(), {
         method: 'POST',
+        signal: AbortSignal.timeout(5000),
         headers: {
           'content-type': 'application/json',
           'x-ito-api-key': apiKey,
@@ -81,8 +83,7 @@ export function initializeLogging() {
       })
       if (res.ok || res.status === 204) {
         // Remove sent items only on success
-        queue.splice(0, take)
-        persistQueue()
+        queue.acknowledge(batch)
       }
     } catch {
       // Keep items in queue on failure; they remain persisted
@@ -139,9 +140,7 @@ export function initializeLogging() {
 
   console.log = (...args: any[]) => {
     try {
-      queue.push(toEvent('log', String(args[0] ?? ''), { args }))
-      if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
-      persistQueue()
+      queue.append(toEvent('log', String(args[0] ?? ''), { args }))
       scheduleFlush()
     } catch (err) {
       originalError('Failed to enqueue log event (log):', err)
@@ -150,9 +149,7 @@ export function initializeLogging() {
   }
   console.info = (...args: any[]) => {
     try {
-      queue.push(toEvent('info', String(args[0] ?? ''), { args }))
-      if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
-      persistQueue()
+      queue.append(toEvent('info', String(args[0] ?? ''), { args }))
       scheduleFlush()
     } catch (err) {
       originalError('Failed to enqueue log event (info):', err)
@@ -161,9 +158,7 @@ export function initializeLogging() {
   }
   console.warn = (...args: any[]) => {
     try {
-      queue.push(toEvent('warn', String(args[0] ?? ''), { args }))
-      if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
-      persistQueue()
+      queue.append(toEvent('warn', String(args[0] ?? ''), { args }))
       scheduleFlush()
     } catch (err) {
       originalError('Failed to enqueue log event (warn):', err)
@@ -172,9 +167,7 @@ export function initializeLogging() {
   }
   console.error = (...args: any[]) => {
     try {
-      queue.push(toEvent('error', String(args[0] ?? ''), { args }))
-      if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
-      persistQueue()
+      queue.append(toEvent('error', String(args[0] ?? ''), { args }))
       scheduleFlush()
     } catch (err) {
       originalError('Failed to enqueue log event (error):', err)
@@ -200,9 +193,7 @@ export function initializeLogging() {
     ;(log as any)[method] = (...args: any[]) => {
       try {
         const mapped = levelMap[method] || 'info'
-        queue.push(toEvent(mapped as any, String(args[0] ?? ''), { args }))
-        if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
-        persistQueue()
+        queue.append(toEvent(mapped as any, String(args[0] ?? ''), { args }))
         scheduleFlush()
       } catch (err) {
         originalError(`Failed to enqueue electron-log event (${method}):`, err)
@@ -213,6 +204,7 @@ export function initializeLogging() {
 
   // Best-effort flush when the app is quitting; durability is ensured by persistence
   app.on('before-quit', () => {
+    queue.persistNow()
     void flush()
   })
 

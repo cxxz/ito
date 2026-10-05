@@ -1,3 +1,4 @@
+import type { HistoryCursor, HistoryPage, HistoryStats } from '../types/history'
 import { IpcRendererEvent, ipcRenderer } from 'electron'
 import { AdvancedSettings } from '../main/store'
 import { DbResult } from '../main/sqlite/repo'
@@ -125,6 +126,11 @@ const api = {
     delete: (id: string) => ipcRenderer.invoke('dictionary:delete', id),
   },
   interactions: {
+    getPage: (before?: HistoryCursor | null): Promise<HistoryPage> =>
+      ipcRenderer.invoke('interactions:get-page', before),
+    getStats: (): Promise<HistoryStats> =>
+      ipcRenderer.invoke('interactions:get-stats'),
+    getIds: (): Promise<string[]> => ipcRenderer.invoke('interactions:get-ids'),
     getAll: () => ipcRenderer.invoke('interactions:get-all'),
     getById: (id: string) => ipcRenderer.invoke('interactions:get-by-id', id),
     retranscribe: (id: string) =>

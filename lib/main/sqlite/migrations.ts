@@ -79,4 +79,17 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '20261006000000_index_history_and_cache_word_counts',
+    up: `
+      ALTER TABLE interactions ADD COLUMN word_count INTEGER;
+      CREATE INDEX idx_interactions_history ON interactions(user_id, created_at DESC, id DESC) WHERE deleted_at IS NULL;
+      CREATE INDEX idx_interactions_uncounted ON interactions(user_id) WHERE deleted_at IS NULL AND word_count IS NULL;
+    `,
+    down: `
+      DROP INDEX idx_interactions_uncounted;
+      DROP INDEX idx_interactions_history;
+      ALTER TABLE interactions DROP COLUMN word_count;
+    `,
+  },
 ]

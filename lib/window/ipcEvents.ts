@@ -1,3 +1,9 @@
+import {
+  getHistoryPage,
+  getHistoryStats,
+  getHistoryIds,
+} from '../main/historyQueries'
+import type { HistoryCursor } from '../types/history'
 import { BrowserWindow, ipcMain, shell, app, dialog } from 'electron'
 import log from 'electron-log'
 import os from 'os'
@@ -352,6 +358,16 @@ export function registerIPC() {
   handleIPC('dictionary:delete', async (_e, id) =>
     DictionaryTable.softDelete(id),
   )
+
+  handleIPC(
+    'interactions:get-page',
+    (_event, before?: HistoryCursor | null) => {
+      void historyRetentionService.pruneExpiredHistory()
+      return getHistoryPage(getCurrentUserId(), before)
+    },
+  )
+  handleIPC('interactions:get-stats', () => getHistoryStats(getCurrentUserId()))
+  handleIPC('interactions:get-ids', () => getHistoryIds(getCurrentUserId()))
 
   // Interactions
   handleIPC('interactions:get-all', () => {

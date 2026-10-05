@@ -59,7 +59,9 @@ function parseJsonField(value: any): any {
 }
 
 // Helper function to parse interaction JSON fields
-function parseInteractionJsonFields(interaction: Interaction): Interaction {
+export function parseInteractionJsonFields<
+  T extends Pick<Interaction, 'asr_output' | 'llm_output'>,
+>(interaction: T): T {
   interaction.asr_output = parseJsonField(interaction.asr_output)
   interaction.llm_output = parseJsonField(interaction.llm_output)
   return interaction
@@ -208,6 +210,7 @@ export class InteractionsTable {
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         asr_output = excluded.asr_output,
+        word_count = NULL,
         llm_output = excluded.llm_output,
         raw_audio = excluded.raw_audio,
         duration_ms = excluded.duration_ms,

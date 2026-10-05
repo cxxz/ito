@@ -1,3 +1,4 @@
+import type { HistoryCursor, HistoryPage, HistoryStats } from '../types/history'
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type api from './api'
 
@@ -78,6 +79,9 @@ declare global {
         delete: (id: string) => Promise<void>
       }
       interactions: {
+        getPage: (before?: HistoryCursor | null) => Promise<HistoryPage>
+        getStats: () => Promise<HistoryStats>
+        getIds: () => Promise<string[]>
         getAll: () => Promise<any[]>
         getById: (id: string) => Promise<any>
         retranscribe: (id: string) => Promise<{

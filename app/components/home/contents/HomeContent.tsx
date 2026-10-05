@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 import {
   ChartNoAxesColumn,
   InfoCircle,
@@ -18,7 +18,10 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '../../ui/tooltip'
 import { useAuthStore } from '@/app/store/useAuthStore'
 import { useMainStore } from '@/app/store/useMainStore'
 import { usePlaygroundStore } from '@/app/store/usePlaygroundStore'
-import { Interaction } from '@/lib/main/sqlite/models'
+import type {
+  HistoryItem as Interaction,
+  HistoryCursor,
+} from '@/lib/types/history'
 import { TotalWordsIcon } from '../../icons/TotalWordsIcon'
 import { SpeedIcon } from '../../icons/SpeedIcon'
 import {
@@ -35,8 +38,16 @@ import { getKeyDisplay } from '@/app/utils/keyboard'
 import { createStereo48kWavFromMonoPCM } from '@/app/utils/audioUtils'
 import { KeyName } from '@/lib/types/keyboard'
 import { usePlatform } from '@/app/hooks/usePlatform'
-import { calculateAllStats, InteractionStats } from '@/app/utils/userMetrics'
+import { InteractionStats } from '@/app/utils/userMetrics'
 import { IPC_EVENTS } from '@/lib/types/ipc'
+
+function disposeAudio(audio: HTMLAudioElement) {
+  audio.onended = null
+  audio.onerror = null
+  audio.pause()
+  audio.currentTime = 0
+  if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
+}
 
 const StatCard = ({
   title,
@@ -71,10 +82,16 @@ export default function HomeContent() {
   const platform = usePlatform()
   const [interactions, setInteractions] = useState<Interaction[]>([])
   const [loading, setLoading] = useState(true)
+  const [pageCursors, setPageCursors] = useState<Array<HistoryCursor | null>>([
+    null,
+  ])
+  const [nextCursor, setNextCursor] = useState<HistoryCursor | null>(null)
+  const loadGeneration = useRef(0)
+  const audioRequest = useRef(0)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
-  const [audioInstances, setAudioInstances] = useState<
-    Map<string, HTMLAudioElement>
-  >(new Map())
+  const activeAudio = useRef<{ id: string; audio: HTMLAudioElement } | null>(
+    null,
+  )
   const [copiedItems, setCopiedItems] = useState<Set<string>>(new Set())
   const [openTooltipKey, setOpenTooltipKey] = useState<string | null>(null)
   const [retranscribingIds, setRetranscribingIds] = useState<Set<string>>(
@@ -101,32 +118,40 @@ export default function HomeContent() {
     return `${Math.floor(days / 30)} months`
   }
 
-  const loadInteractions = useCallback(async () => {
-    try {
-      const allInteractions = await window.api.interactions.getAll()
-
-      // Sort by creation date (newest first) - remove the slice(0, 10) to show all interactions
-      const sortedInteractions = allInteractions.sort(
-        (a: Interaction, b: Interaction) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )
-      setInteractions(sortedInteractions)
-
-      // Calculate and set statistics
-      const calculatedStats = calculateAllStats(sortedInteractions)
-      setStats(calculatedStats)
-    } catch (error) {
-      console.error('Failed to load interactions:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const loadInteractions = useCallback(
+    async (before: HistoryCursor | null = null) => {
+      const generation = ++loadGeneration.current
+      setLoading(true)
+      // Statistics are aggregated in SQLite and do not delay painting the page.
+      void window.api.interactions
+        .getStats()
+        .then(result => {
+          if (generation === loadGeneration.current) setStats(result)
+        })
+        .catch(error =>
+          console.error('Failed to load history statistics:', error),
+        )
+      try {
+        const page = await window.api.interactions.getPage(before)
+        if (generation !== loadGeneration.current) return
+        setInteractions(page.items)
+        setNextCursor(page.nextCursor)
+      } catch (error) {
+        console.error('Failed to load interactions:', error)
+      } finally {
+        if (generation === loadGeneration.current) setLoading(false)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
+    const requests = { load: loadGeneration, audio: audioRequest, activeAudio }
     loadInteractions()
 
     // Listen for new interactions
     const handleHistoryChanged = () => {
+      setPageCursors([null])
       loadInteractions()
     }
 
@@ -141,28 +166,16 @@ export default function HomeContent() {
 
     // Cleanup listener on unmount
     return () => {
+      requests.load.current++
+      requests.audio.current++
+      if (requests.activeAudio.current) {
+        disposeAudio(requests.activeAudio.current.audio)
+        requests.activeAudio.current = null
+      }
       unsubscribeInteractionCreated()
       unsubscribeHistoryPruned()
     }
   }, [loadInteractions])
-
-  // Cleanup audio instances on unmount
-  useEffect(() => {
-    return () => {
-      audioInstances.forEach(audio => {
-        try {
-          audio.pause()
-          audio.currentTime = 0
-          // Best-effort release of object URL if used
-          if (audio.src?.startsWith('blob:')) {
-            URL.revokeObjectURL(audio.src)
-          }
-        } catch {
-          /* ignore */
-        }
-      })
-    }
-  }, [audioInstances])
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString)
@@ -270,98 +283,66 @@ export default function HomeContent() {
     return null
   }
 
+  const cleanupAllAudioInstances = () => {
+    audioRequest.current++
+    if (activeAudio.current) disposeAudio(activeAudio.current.audio)
+    activeAudio.current = null
+    setPlayingAudio(null)
+  }
+
+  const cleanupAudioInstance = (interactionId: string) => {
+    if (
+      playingAudio === interactionId ||
+      activeAudio.current?.id === interactionId
+    )
+      cleanupAllAudioInstances()
+  }
+
   const handleAudioPlayStop = async (interaction: Interaction) => {
+    const wasPlaying = playingAudio === interaction.id
+    cleanupAllAudioInstances()
+    if (wasPlaying || !interaction.has_audio) return
+
+    const request = ++audioRequest.current
+    setPlayingAudio(interaction.id)
     try {
-      // If this interaction is currently playing, stop it
-      if (playingAudio === interaction.id) {
-        const current = audioInstances.get(interaction.id)
-        if (current) {
-          current.pause()
-          current.currentTime = 0
-          if (current.src?.startsWith('blob:')) {
-            URL.revokeObjectURL(current.src)
-          }
-        }
+      const full = await window.api.interactions.getById(interaction.id)
+      if (request !== audioRequest.current) return
+      if (!full?.raw_audio) {
         setPlayingAudio(null)
         return
       }
-
-      // Stop any other playing audio
-      if (playingAudio) {
-        const other = audioInstances.get(playingAudio)
-        if (other) {
-          other.pause()
-          other.currentTime = 0
-          if (other.src?.startsWith('blob:')) {
-            URL.revokeObjectURL(other.src)
-          }
-        }
-      }
-
-      if (!interaction.raw_audio) {
-        console.warn('No audio data available for this interaction')
-        return
-      }
-
-      // Set playing state immediately for responsive UI
-      setPlayingAudio(interaction.id)
-
-      // Reuse existing audio instance if available
-      let audio = audioInstances.get(interaction.id)
-
-      if (!audio) {
-        const pcmData = new Uint8Array(interaction.raw_audio)
-        try {
-          // Convert raw PCM (mono, typically 16 kHz) to 48 kHz stereo WAV for smoother playback
-          const wavBuffer = createStereo48kWavFromMonoPCM(
-            pcmData,
-            interaction.sample_rate || 16000,
-            48000,
-          )
-          const audioBlob = new Blob([wavBuffer], { type: 'audio/wav' })
-          const audioUrl = URL.createObjectURL(audioBlob)
-
-          audio = new Audio(audioUrl)
-          audio.onended = () => {
-            setPlayingAudio(null)
-            if (audio && audio.src?.startsWith('blob:')) {
-              URL.revokeObjectURL(audio.src)
-            }
-          }
-          audio.onerror = err => {
-            console.error('Audio playback error:', err)
-            setPlayingAudio(null)
-            if (audio && audio.src?.startsWith('blob:')) {
-              URL.revokeObjectURL(audio.src)
-            }
-          }
-
-          setAudioInstances(prev => new Map(prev).set(interaction.id, audio!))
-        } catch (error) {
-          console.error('Failed to create audio instance:', error)
-          setPlayingAudio(null)
-          return
-        }
-      }
-
+      const wavBuffer = createStereo48kWavFromMonoPCM(
+        new Uint8Array(full.raw_audio),
+        interaction.sample_rate || 16000,
+        48000,
+      )
+      const audioUrl = URL.createObjectURL(
+        new Blob([wavBuffer], { type: 'audio/wav' }),
+      )
+      let audio: HTMLAudioElement
       try {
-        await audio.play()
-      } catch (playError) {
-        console.error('Failed to start audio playback:', playError)
-        setPlayingAudio(null)
+        audio = new Audio(audioUrl)
+      } catch (error) {
+        URL.revokeObjectURL(audioUrl)
+        throw error
       }
+      activeAudio.current = { id: interaction.id, audio }
+      audio.onended = () => {
+        if (request === audioRequest.current) cleanupAllAudioInstances()
+      }
+      audio.onerror = error => {
+        console.error('Audio playback error:', error)
+        if (request === audioRequest.current) cleanupAllAudioInstances()
+      }
+      await audio.play()
     } catch (error) {
-      console.error('Failed to play/stop audio:', error)
-      setPlayingAudio(null)
+      console.error('Failed to play audio:', error)
+      if (request === audioRequest.current) cleanupAllAudioInstances()
     }
   }
 
   const groupedInteractions = groupInteractionsByDate(interactions)
-
-  const updateInteractions = (nextInteractions: Interaction[]) => {
-    setInteractions(nextInteractions)
-    setStats(calculateAllStats(nextInteractions))
-  }
 
   const toggleExpandedInteraction = (interactionId: string) => {
     setExpandedInteractionIds(prev => {
@@ -373,47 +354,6 @@ export default function HomeContent() {
       }
       return next
     })
-  }
-
-  const cleanupAudioInstance = (interactionId: string) => {
-    const audio = audioInstances.get(interactionId)
-    if (audio) {
-      try {
-        audio.pause()
-        audio.currentTime = 0
-        if (audio.src?.startsWith('blob:')) {
-          URL.revokeObjectURL(audio.src)
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-
-    setAudioInstances(prev => {
-      if (!prev.has(interactionId)) {
-        return prev
-      }
-      const next = new Map(prev)
-      next.delete(interactionId)
-      return next
-    })
-    setPlayingAudio(prev => (prev === interactionId ? null : prev))
-  }
-
-  const cleanupAllAudioInstances = () => {
-    audioInstances.forEach(audio => {
-      try {
-        audio.pause()
-        audio.currentTime = 0
-        if (audio.src?.startsWith('blob:')) {
-          URL.revokeObjectURL(audio.src)
-        }
-      } catch {
-        /* ignore */
-      }
-    })
-    setAudioInstances(new Map())
-    setPlayingAudio(null)
   }
 
   const copyToClipboard = async (text: string, interactionId: string) => {
@@ -463,11 +403,7 @@ export default function HomeContent() {
         next.delete(interaction.id)
         return next
       })
-      setInteractions(prev => {
-        const next = prev.filter(item => item.id !== interaction.id)
-        setStats(calculateAllStats(next))
-        return next
-      })
+      await loadInteractions(pageCursors.at(-1) ?? null)
     } catch (error) {
       console.error('Failed to delete interaction:', error)
     }
@@ -492,18 +428,23 @@ export default function HomeContent() {
     cleanupAllAudioInstances()
 
     try {
-      const results = await Promise.allSettled(
-        interactions.map(interaction =>
-          window.api.interactions.delete(interaction.id),
-        ),
-      )
-      const failed = results.filter(result => result.status === 'rejected')
-      if (failed.length > 0) {
-        console.error('Failed to clear some interactions:', failed)
-        await loadInteractions()
-        return
+      const ids = await window.api.interactions.getIds()
+      const failed: PromiseRejectedResult[] = []
+      for (let i = 0; i < ids.length; i += 20) {
+        const results = await Promise.allSettled(
+          ids.slice(i, i + 20).map(id => window.api.interactions.delete(id)),
+        )
+        failed.push(
+          ...results.filter(
+            (result): result is PromiseRejectedResult =>
+              result.status === 'rejected',
+          ),
+        )
       }
-      updateInteractions([])
+      if (failed.length)
+        console.error('Failed to clear some interactions:', failed)
+      setPageCursors([null])
+      await loadInteractions()
     } catch (error) {
       console.error('Failed to clear interactions:', error)
       await loadInteractions()
@@ -514,12 +455,14 @@ export default function HomeContent() {
 
   const handleAudioDownload = async (interaction: Interaction) => {
     try {
-      if (!interaction.raw_audio) {
+      if (!interaction.has_audio) {
         console.warn('No audio data available for download')
         return
       }
 
-      const pcmData = new Uint8Array(interaction.raw_audio)
+      const full = await window.api.interactions.getById(interaction.id)
+      if (!full?.raw_audio) return
+      const pcmData = new Uint8Array(full.raw_audio)
       // Convert raw PCM to WAV format
       const wavBuffer = createStereo48kWavFromMonoPCM(
         pcmData,
@@ -554,7 +497,7 @@ export default function HomeContent() {
   }
 
   const handleRetranscribe = async (interaction: Interaction) => {
-    if (!interaction.raw_audio) {
+    if (!interaction.has_audio) {
       console.warn('No audio data available for this interaction')
       return
     }
@@ -579,27 +522,25 @@ export default function HomeContent() {
   const { setCurrentPage } = useMainStore()
   const { setAudioFromInteraction } = usePlaygroundStore()
 
-  const handleSendToPlayground = (interaction: Interaction) => {
-    if (!interaction.raw_audio) {
+  const handleSendToPlayground = async (interaction: Interaction) => {
+    if (!interaction.has_audio) {
       console.warn('No audio data available for this interaction')
       return
     }
 
-    // Convert raw_audio to ArrayBuffer
-    const audioBuffer =
-      interaction.raw_audio instanceof ArrayBuffer
-        ? interaction.raw_audio
-        : new Uint8Array(interaction.raw_audio).buffer
-
-    // Load audio into playground store
-    setAudioFromInteraction(
-      interaction.id,
-      audioBuffer,
-      interaction.sample_rate || 16000,
-    )
-
-    // Navigate to playground
-    setCurrentPage('playground')
+    try {
+      const full = await window.api.interactions.getById(interaction.id)
+      if (!full?.raw_audio) return
+      const audioBuffer = new Uint8Array(full.raw_audio).buffer
+      setAudioFromInteraction(
+        interaction.id,
+        audioBuffer,
+        interaction.sample_rate || 16000,
+      )
+      setCurrentPage('playground')
+    } catch (error) {
+      console.error('Failed to load audio into Playground:', error)
+    }
   }
 
   return (
@@ -848,7 +789,7 @@ export default function HomeContent() {
                             )}
 
                             {/* Download button */}
-                            {interaction.raw_audio && (
+                            {interaction.has_audio && (
                               <Tooltip
                                 open={
                                   openTooltipKey ===
@@ -876,7 +817,7 @@ export default function HomeContent() {
                               </Tooltip>
                             )}
 
-                            {interaction.raw_audio && (
+                            {interaction.has_audio && (
                               <Tooltip
                                 open={
                                   openTooltipKey ===
@@ -915,7 +856,7 @@ export default function HomeContent() {
                             )}
 
                             {/* Send to Playground button */}
-                            {interaction.raw_audio && (
+                            {interaction.has_audio && (
                               <Tooltip
                                 open={
                                   openTooltipKey ===
@@ -966,7 +907,12 @@ export default function HomeContent() {
                                   onClick={() =>
                                     handleAudioPlayStop(interaction)
                                   }
-                                  disabled={!interaction.raw_audio}
+                                  aria-label={
+                                    playingAudio === interaction.id
+                                      ? 'Stop audio'
+                                      : 'Play audio'
+                                  }
+                                  disabled={!interaction.has_audio}
                                 >
                                   {playingAudio === interaction.id ? (
                                     <Stop className="w-4 h-4" />
@@ -976,7 +922,7 @@ export default function HomeContent() {
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="top" sideOffset={5}>
-                                {!interaction.raw_audio
+                                {!interaction.has_audio
                                   ? 'No audio available'
                                   : playingAudio === interaction.id
                                     ? 'Stop'
@@ -1075,6 +1021,33 @@ export default function HomeContent() {
             ),
           )
         )}
+        <div className="flex justify-between items-center py-4 text-sm">
+          <button
+            disabled={loading || pageCursors.length <= 1}
+            className="disabled:opacity-40"
+            onClick={() => {
+              cleanupAllAudioInstances()
+              const cursors = pageCursors.slice(0, -1)
+              setPageCursors(cursors)
+              void loadInteractions(cursors.at(-1) ?? null)
+            }}
+          >
+            Newer
+          </button>
+          <span>Page {pageCursors.length}</span>
+          <button
+            disabled={loading || !nextCursor}
+            className="disabled:opacity-40"
+            onClick={() => {
+              if (!nextCursor) return
+              cleanupAllAudioInstances()
+              setPageCursors([...pageCursors, nextCursor])
+              void loadInteractions(nextCursor)
+            }}
+          >
+            Older
+          </button>
+        </div>
       </div>
     </div>
   )
