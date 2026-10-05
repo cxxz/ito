@@ -1,3 +1,4 @@
+import { StringDecoder } from 'string_decoder'
 import { spawn } from 'child_process'
 import { platform, arch } from 'os'
 import { getNativeBinaryPath } from './native-interface'
@@ -42,12 +43,15 @@ const MAXIUMUM_TEXT_LENGTH_DEFAULT = 10000 // Maximum length of text to return
 type PendingRequest = {
   resolve: (value: any) => void
   reject: (reason?: any) => void
+  timer: ReturnType<typeof setTimeout>
 }
 
 class SelectedTextReaderService extends EventEmitter {
   #selectedTextProcess: ReturnType<typeof spawn> | null = null
   #pendingRequests = new Map<string, PendingRequest>()
   #requestIdCounter = 0
+  #decoder = new StringDecoder('utf8')
+  #buffer = ''
 
   constructor() {
     super()
@@ -83,10 +87,22 @@ class SelectedTextReaderService extends EventEmitter {
         throw new Error('Failed to spawn process')
       }
 
-      this.#selectedTextProcess.stdout?.on('data', this.#onData.bind(this))
-      this.#selectedTextProcess.stderr?.on('data', this.#onStdErr.bind(this))
-      this.#selectedTextProcess.on('close', this.#onClose.bind(this))
-      this.#selectedTextProcess.on('error', this.#onError.bind(this))
+      const child = this.#selectedTextProcess
+      this.#decoder = new StringDecoder('utf8')
+      this.#buffer = ''
+      child.stdout?.on('data', data => {
+        if (this.#selectedTextProcess === child) this.#onData(data)
+      })
+      child.stderr?.on('data', data => {
+        if (this.#selectedTextProcess === child) this.#onStdErr(data)
+      })
+      child.on('close', (code, signal) => {
+        if (this.#selectedTextProcess === child)
+          this.#onClose(code ?? -1, signal ?? '')
+      })
+      child.on('error', error => {
+        if (this.#selectedTextProcess === child) this.#onError(error)
+      })
 
       console.log('[SelectedTextService] Selected text reader process started.')
     } catch (err) {
@@ -107,12 +123,15 @@ class SelectedTextReaderService extends EventEmitter {
       console.log(
         '[SelectedTextService] Stopping selected text reader process.',
       )
-      this.#selectedTextProcess.kill()
+      const child = this.#selectedTextProcess
       this.#selectedTextProcess = null
+      child.kill()
+      this.#buffer = ''
       this.emit('stopped')
 
       // Reject all pending requests
-      this.#pendingRequests.forEach(({ reject }) => {
+      this.#pendingRequests.forEach(({ reject, timer }) => {
+        clearTimeout(timer)
         reject(new Error('Service terminated'))
       })
       this.#pendingRequests.clear()
@@ -134,7 +153,11 @@ class SelectedTextReaderService extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       const requestId = `req_${++this.#requestIdCounter}_${Date.now()}`
-      this.#pendingRequests.set(requestId, { resolve, reject })
+      const timer = setTimeout(() => {
+        this.#pendingRequests.delete(requestId)
+        reject(new Error('Selected text request timed out'))
+      }, 5000)
+      this.#pendingRequests.set(requestId, { resolve, reject, timer })
 
       const command: SelectedTextCommand = {
         command: 'get-text',
@@ -144,14 +167,6 @@ class SelectedTextReaderService extends EventEmitter {
       }
 
       this.#sendCommand(command)
-
-      // Set timeout to avoid hanging requests
-      setTimeout(() => {
-        if (this.#pendingRequests.has(requestId)) {
-          this.#pendingRequests.delete(requestId)
-          reject(new Error('Selected text request timed out'))
-        }
-      }, 5000) // 5 second timeout
     })
   }
 
@@ -168,7 +183,11 @@ class SelectedTextReaderService extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       const requestId = `ctx_${++this.#requestIdCounter}_${Date.now()}`
-      this.#pendingRequests.set(requestId, { resolve, reject })
+      const timer = setTimeout(() => {
+        this.#pendingRequests.delete(requestId)
+        reject(new Error('Cursor context request timed out'))
+      }, 5000)
+      this.#pendingRequests.set(requestId, { resolve, reject, timer })
 
       const command: CursorContextCommand = {
         command: 'get-cursor-context',
@@ -178,14 +197,6 @@ class SelectedTextReaderService extends EventEmitter {
       }
 
       this.#sendCommand(command)
-
-      // Set timeout to avoid hanging requests
-      setTimeout(() => {
-        if (this.#pendingRequests.has(requestId)) {
-          this.#pendingRequests.delete(requestId)
-          reject(new Error('Cursor context request timed out'))
-        }
-      }, 5000) // 5 second timeout
     })
   }
 
@@ -201,12 +212,24 @@ class SelectedTextReaderService extends EventEmitter {
       const commandStr = JSON.stringify(command) + '\n'
       this.#selectedTextProcess.stdin?.write(commandStr)
     } catch (error) {
-      log.error('[SelectedTextService] Error sending command:', error)
+      const pending = this.#pendingRequests.get(command.requestId)
+      if (pending) {
+        clearTimeout(pending.timer)
+        this.#pendingRequests.delete(command.requestId)
+        pending.reject(error)
+      }
+      console.error('[SelectedTextService] Error sending command:', error)
     }
   }
 
   #onData(data: Buffer): void {
-    const lines = data.toString().trim().split('\n')
+    this.#buffer += this.#decoder.write(data)
+    if (this.#buffer.length > 1_048_576) {
+      this.terminate()
+      return
+    }
+    const lines = this.#buffer.split('\n')
+    this.#buffer = lines.pop() ?? ''
 
     for (const line of lines) {
       if (!line.trim()) continue
@@ -218,7 +241,10 @@ class SelectedTextReaderService extends EventEmitter {
           response.requestId &&
           this.#pendingRequests.has(response.requestId)
         ) {
-          const { resolve } = this.#pendingRequests.get(response.requestId)!
+          const { resolve, timer } = this.#pendingRequests.get(
+            response.requestId,
+          )!
+          clearTimeout(timer)
           this.#pendingRequests.delete(response.requestId)
           resolve(response)
         } else {
@@ -247,9 +273,11 @@ class SelectedTextReaderService extends EventEmitter {
       `[SelectedTextService] Process exited with code: ${code}, signal: ${signal}`,
     )
     this.#selectedTextProcess = null
+    this.#buffer = ''
 
     // Reject all pending requests
-    this.#pendingRequests.forEach(({ reject }) => {
+    this.#pendingRequests.forEach(({ reject, timer }) => {
+      clearTimeout(timer)
       reject(new Error(`Process exited with code ${code}`))
     })
     this.#pendingRequests.clear()
@@ -258,7 +286,8 @@ class SelectedTextReaderService extends EventEmitter {
   }
 
   #onError(error: Error): void {
-    log.error('[SelectedTextService] Process error:', error)
+    this.terminate()
+    console.error('[SelectedTextService] Process error:', error)
     this.emit('error', error)
   }
 

@@ -8,11 +8,18 @@ import log from 'electron-log'
 
 export class VoiceInputService {
   private stopPromise: Promise<void> | null = null
+  public onRecordingError(listener: (error: Error) => void) {
+    audioRecorderService.on('recording-error', listener)
+    return () => {
+      audioRecorderService.off('recording-error', listener)
+    }
+  }
+
   /**
    * Starts audio recording and handles system audio muting.
    * Does NOT start the ItoStreamController - that should be done separately.
    */
-  public startAudioRecording = () => {
+  public startAudioRecording = async () => {
     console.log('[VoiceInputService] Starting audio recording')
 
     const settings = store.get(STORE_KEYS.SETTINGS)
@@ -29,7 +36,7 @@ export class VoiceInputService {
       '[VoiceInputService] Starting audio recorder with device:',
       deviceId,
     )
-    audioRecorderService.startRecording(deviceId)
+    await audioRecorderService.startRecording(deviceId)
 
     console.log('[VoiceInputService] Audio recording started')
   }
@@ -54,18 +61,14 @@ export class VoiceInputService {
       '[VoiceInputService] Audio recorder stopped, waiting for drain...',
     )
 
-    // Wait for explicit drain-complete signal from the recorder (with timeout fallback)
     try {
       await drain
       console.log('[VoiceInputService] Drain complete')
-    } catch (e) {
-      log.warn('[VoiceInputService] drain-complete wait failed, proceeding:', e)
-    }
-
-    // Unmute system audio if it was muted
-    if (store.get(STORE_KEYS.SETTINGS).muteAudioWhenDictating) {
-      console.log('[VoiceInputService] Unmuting system audio after dictation')
-      unmuteSystemAudio()
+    } finally {
+      // Restore audio even if the recorder exits or its drain times out.
+      if (store.get(STORE_KEYS.SETTINGS).muteAudioWhenDictating) {
+        unmuteSystemAudio()
+      }
     }
 
     console.log('[VoiceInputService] Audio recording stopped')

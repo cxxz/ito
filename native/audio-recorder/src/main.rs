@@ -134,7 +134,13 @@ impl CommandProcessor {
             match command {
                 Command::ListDevices => self.list_devices(),
                 Command::Start { device_name } => self.start_recording(device_name),
-                Command::Stop => self.stop_recording(),
+                Command::Stop => {
+                    let had_writer = self.writer_handle.is_some();
+                    self.stop_recording();
+                    if !had_writer {
+                        write_status(&self.stdout, "drain-complete", "");
+                    }
+                }
                 Command::GetDeviceConfig { device_name } => self.get_device_config(device_name),
             }
         }
@@ -162,14 +168,21 @@ impl CommandProcessor {
         self.stop_recording();
 
         let host = self.get_or_create_host();
-        if let Ok(handles) = start_capture(device_name, Arc::clone(&self.stdout), host) {
-            if handles.stream.play().is_ok() {
+        match start_capture(device_name, Arc::clone(&self.stdout), host) {
+            Ok(handles) => {
+                let result = handles.stream.play();
                 self.audio_tx = Some(handles.audio_tx);
                 self.writer_handle = Some(handles.writer_handle);
                 self.active_stream = Some(handles.stream);
+                match result {
+                    Ok(()) => write_status(&self.stdout, "recording-ready", ""),
+                    Err(error) => {
+                        self.stop_recording();
+                        write_status(&self.stdout, "recording-error", &error.to_string());
+                    }
+                }
             }
-        } else {
-            eprintln!("[audio-recorder] CRITICAL: Failed to create audio stream");
+            Err(error) => write_status(&self.stdout, "recording-error", &error.to_string()),
         }
     }
 
@@ -220,6 +233,13 @@ impl CommandProcessor {
             let mut writer = self.stdout.lock().unwrap();
             let _ = write_framed_message(&mut *writer, MSG_TYPE_JSON, json_string.as_bytes());
         }
+    }
+}
+
+fn write_status(stdout: &Arc<Mutex<io::Stdout>>, status: &str, message: &str) {
+    let response = serde_json::json!({ "type": status, "message": message });
+    if let Ok(mut writer) = stdout.lock() {
+        let _ = write_framed_message(&mut *writer, MSG_TYPE_JSON, response.to_string().as_bytes());
     }
 }
 
@@ -462,7 +482,10 @@ fn start_capture(
     let input_sample_format = default_config.sample_format();
     let channels_count: usize = default_config.channels() as usize;
 
-    let err_fn = |err| eprintln!("[audio-recorder] Stream error: {}", err);
+    let error_stdout = Arc::clone(&stdout);
+    let err_fn = move |err: cpal::StreamError| {
+        write_status(&error_stdout, "recording-error", &err.to_string());
+    };
     let stream_config: StreamConfig = default_config.clone().into();
 
     // Writer thread and queue

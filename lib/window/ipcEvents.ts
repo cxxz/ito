@@ -451,7 +451,9 @@ export function registerIPC() {
   ipcMain.on('start-native-recording-test', _event => {
     console.log(`IPC: Received 'start-native-recording-test'`)
     const deviceId = store.get(STORE_KEYS.SETTINGS).microphoneDeviceId
-    audioRecorderService.startRecording(deviceId)
+    void audioRecorderService
+      .startRecording(deviceId)
+      .catch(error => console.error('Microphone test failed:', error))
   })
 
   // When the hotkey is released, stop recording and notify the pill window.

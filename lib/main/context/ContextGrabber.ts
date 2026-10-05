@@ -30,22 +30,20 @@ export class ContextGrabber {
   public async gatherContext(mode: ItoMode): Promise<ContextData> {
     console.log('[ContextGrabber] Gathering context for mode:', mode)
 
-    // Get vocabulary words from dictionary
-    const dictionaryVocabulary = await this.getVocabulary()
-
-    // Get active window context
-    const { windowTitle, appName } = await timingCollector.timeAsync(
-      TimingEventName.WINDOW_CONTEXT_GATHER,
-      async () => await this.getWindowContext(),
-    )
-
-    // Get selected text if in EDIT mode (used for replacement logic)
-    const contextText = await this.getContextText(mode)
-
-    // Extract vocabulary words from selected text as temporary hints
-    // Only do this in non-EDIT modes - in EDIT mode, selected text is used
-    // only as context for the LLM step, not as vocabulary hints for ASR
-    const selectedTextVocabulary = await this.getSelectedTextVocabulary(mode)
+    // These reads are independent; do not serialize dictionary, window, and selection work.
+    const [
+      dictionaryVocabulary,
+      { windowTitle, appName },
+      contextText,
+      selectedTextVocabulary,
+    ] = await Promise.all([
+      this.getVocabulary(),
+      timingCollector.timeAsync(TimingEventName.WINDOW_CONTEXT_GATHER, () =>
+        this.getWindowContext(),
+      ),
+      this.getContextText(mode),
+      this.getSelectedTextVocabulary(mode),
+    ])
 
     // Combine dictionary vocabulary with selected text vocabulary
     const vocabularyWords = [...dictionaryVocabulary, ...selectedTextVocabulary]

@@ -412,3 +412,25 @@ describe('Selected Text Reader Functions', () => {
     expect(hasResult).toBe(false)
   })
 })
+
+test('reassembles fragmented UTF-8 responses and multiple lines without timing out', async () => {
+  mockStdout.removeAllListeners()
+  mockStderr.removeAllListeners()
+  selectedTextReaderService.initialize()
+  mockChildProcess.stdin.write.mockImplementation((data: string) => {
+    const requestId = JSON.parse(data).requestId
+    const response = Buffer.from(
+      JSON.stringify({ requestId, success: true, text: '你好 café' }) + '\n',
+    )
+    const boundary = response.indexOf(Buffer.from('你')) + 1
+    mockStdout.emit('data', response.subarray(0, boundary))
+    mockStdout.emit('data', response.subarray(boundary))
+  })
+  expect((await selectedTextReaderService.getSelectedText()).text).toBe(
+    '你好 café',
+  )
+  expect((await selectedTextReaderService.getSelectedText()).text).toBe(
+    '你好 café',
+  )
+  selectedTextReaderService.terminate()
+})

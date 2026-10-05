@@ -9,7 +9,14 @@ mock.module('./timing/TimingCollector', () => ({
   TimingEventName: TimingEventName,
 }))
 
+let recorderFailure: ((error: Error) => void) | undefined
 const mockVoiceInputService = {
+  onRecordingError: mock((listener: (error: Error) => void) => {
+    recorderFailure = listener
+    return () => {
+      recorderFailure = undefined
+    }
+  }),
   startAudioRecording: mock(() => Promise.resolve()),
   stopAudioRecording: mock(() => Promise.resolve()),
 }
@@ -290,23 +297,12 @@ describe('itoSessionManager', () => {
     expect(mockRecordingStateNotifier.notifyRecordingStopped).toHaveBeenCalled()
   })
 
-  test('should refresh vocabulary at recording end', async () => {
-    mockContextGrabber.gatherVocabularyWords.mockResolvedValueOnce([
-      'custom-term',
-    ])
-
+  test('does not read selected-text vocabulary again when stopping', async () => {
     const { ItoSessionManager } = await import('./itoSessionManager')
     const session = new ItoSessionManager()
-
     await session.startSession(ItoMode.TRANSCRIBE)
     await session.completeSession()
-
-    expect(mockContextGrabber.gatherVocabularyWords).toHaveBeenCalledWith(
-      ItoMode.TRANSCRIBE,
-    )
-    expect(
-      mockItoStreamController.scheduleVocabularyUpdate,
-    ).toHaveBeenCalledWith(['custom-term'])
+    expect(mockContextGrabber.gatherVocabularyWords).not.toHaveBeenCalled()
   })
 
   test('should cancel session when audio too short', async () => {
@@ -476,7 +472,7 @@ describe('itoSessionManager', () => {
   })
 
   test('should handle context fetch error gracefully', async () => {
-    mockItoStreamController.scheduleConfigUpdate.mockRejectedValueOnce(
+    mockContextGrabber.gatherContext.mockRejectedValueOnce(
       new Error('Context fetch failed'),
     )
 
@@ -582,6 +578,53 @@ test('late context from a cancelled recording cannot update its replacement', as
   await new Promise(resolve => setTimeout(resolve, 0))
   expect(mockItoStreamController.scheduleConfigUpdate.mock.calls.length).toBe(
     updates,
+  )
+  await session.cancelSession()
+})
+
+test('UI recording starts only after the recorder is ready', async () => {
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  const ready = deferred<void>()
+  mockVoiceInputService.startAudioRecording.mockReturnValueOnce(ready.promise)
+  const before =
+    mockRecordingStateNotifier.notifyRecordingStarted.mock.calls.length
+  const start = session.startSession(ItoMode.TRANSCRIBE)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(
+    mockRecordingStateNotifier.notifyRecordingStarted.mock.calls.length,
+  ).toBe(before)
+  ready.resolve()
+  await start
+  expect(
+    mockRecordingStateNotifier.notifyRecordingStarted.mock.calls.length,
+  ).toBe(before + 1)
+  await session.cancelSession()
+})
+
+test('optional context cannot delay stopping beyond its budget or leak into the next session', async () => {
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  const context = deferred<any>()
+  mockContextGrabber.gatherContext.mockReturnValueOnce(context.promise)
+  await session.startSession(ItoMode.TRANSCRIBE)
+  await session.completeSession()
+  const updates = mockItoStreamController.scheduleConfigUpdate.mock.calls.length
+  context.resolve({ contextText: 'late' })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(mockItoStreamController.scheduleConfigUpdate.mock.calls.length).toBe(
+    updates,
+  )
+}, 1000)
+
+test('recorder failure cleans up the session and allows another recording', async () => {
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  await session.startSession(ItoMode.TRANSCRIBE)
+  recorderFailure!(new Error('Device disconnected'))
+  await session.completeSession()
+  expect(await session.startSession(ItoMode.TRANSCRIBE)).toBe(
+    'test-interaction-123',
   )
   await session.cancelSession()
 })

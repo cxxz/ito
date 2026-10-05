@@ -31,6 +31,7 @@ type Session = {
   failurePromise?: Promise<void>
   cancelPromise?: Promise<void>
   stopPromise?: Promise<void>
+  removeRecorderErrorListener?: () => void
   grammar: GrammarRulesService
 }
 
@@ -56,6 +57,18 @@ export class ItoSessionManager {
       grammar: new GrammarRulesService(''),
     }
     this.session = session
+    session.removeRecorderErrorListener = voiceInputService.onRecordingError(
+      error => {
+        if (
+          this.session !== session ||
+          session.cancelled ||
+          session.phase !== 'recording'
+        )
+          return
+        session.phase = 'finishing'
+        session.failurePromise = this.fail(session, error)
+      },
+    )
     session.startPromise = this.start(session)
     return session.startPromise
   }
@@ -92,16 +105,35 @@ export class ItoSessionManager {
         session.phase = 'finishing'
         session.failurePromise = this.fail(session, error)
       })
-      await voiceInputService.startAudioRecording()
-      if (session.cancelled || session.phase === 'finishing') return
-      session.phase = 'recording'
-      itoStreamController.setMode(session.mode)
-      recordingStateNotifier.notifyRecordingStarted(session.mode)
+      // Send user-selected provider/settings immediately, even if optional context stalls.
+      await itoStreamController.scheduleConfigUpdate({
+        windowTitle: '',
+        appName: '',
+        contextText: '',
+        vocabularyWords: [],
+        advancedSettings: getAdvancedSettings(),
+      })
+      if (
+        session.cancelled ||
+        session.phase === 'finishing' ||
+        this.session !== session
+      )
+        return
       session.contextPromise = this.fetchAndSendContext(session).catch(
         error => {
           console.error('[itoSessionManager] Failed to fetch context:', error)
         },
       )
+      await voiceInputService.startAudioRecording()
+      if (
+        session.cancelled ||
+        session.failurePromise ||
+        this.session !== session
+      )
+        return
+      session.phase = 'recording'
+      itoStreamController.setMode(session.mode)
+      recordingStateNotifier.notifyRecordingStarted(session.mode)
       return interactionId
     } catch (error) {
       if (!session.failurePromise) {
@@ -121,7 +153,9 @@ export class ItoSessionManager {
   private async fail(session: Session, error: unknown) {
     try {
       itoStreamController.cancelTranscription()
-      await this.stopAudio(session)
+      await this.stopAudio(session).catch(stopError => {
+        console.error('[itoSessionManager] Failed to stop recorder:', stopError)
+      })
       if (!session.cancelled) await this.handleTranscriptionError(error)
     } catch (cleanupError) {
       console.error('[itoSessionManager] Session cleanup failed:', cleanupError)
@@ -132,6 +166,7 @@ export class ItoSessionManager {
 
   private release(session: Session) {
     session.contextClosed = true
+    session.removeRecorderErrorListener?.()
     if (this.session !== session) return
     recordingStateNotifier.notifyRecordingStopped()
     recordingStateNotifier.notifyEditingStopped()
@@ -168,23 +203,6 @@ export class ItoSessionManager {
       !session.contextClosed
     ) {
       session.grammar = new GrammarRulesService(context)
-    }
-  }
-
-  private async refreshVocabularyAtEnd(session: Session) {
-    try {
-      const vocabulary = await contextGrabber.gatherVocabularyWords(
-        session.mode,
-      )
-      if (
-        this.session === session &&
-        !session.cancelled &&
-        !session.contextClosed
-      ) {
-        await itoStreamController.scheduleVocabularyUpdate(vocabulary)
-      }
-    } catch (error) {
-      console.error('[itoSessionManager] Failed to refresh vocabulary:', error)
     }
   }
 
@@ -249,17 +267,27 @@ export class ItoSessionManager {
         await session.responsePromise?.catch(() => {})
         return
       }
-      await Promise.race([session.contextPromise, session.cancelledPromise])
-      if (session.cancelled) return
-      await Promise.race([
-        this.refreshVocabularyAtEnd(session),
-        session.cancelledPromise,
-      ])
-      if (session.cancelled) return
-      session.contextClosed = true
-      itoStreamController.endInteraction()
       recordingStateNotifier.notifyRecordingStopped()
       recordingStateNotifier.notifyProcessingStarted()
+      // Optional context gets a small stop-time budget. No second clipboard read.
+      let deadline: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          session.contextPromise,
+          session.cancelledPromise,
+          new Promise<void>(resolve => {
+            deadline = setTimeout(
+              resolve,
+              session.mode === ItoMode.EDIT ? 1000 : 250,
+            )
+          }),
+        ])
+      } finally {
+        if (deadline) clearTimeout(deadline)
+        session.contextClosed = true
+      }
+      if (session.cancelled) return
+      itoStreamController.endInteraction()
       const result = await session.responsePromise
       if (result && !session.cancelled)
         await this.handleTranscriptionResponse(result, session)

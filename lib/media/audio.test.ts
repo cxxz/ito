@@ -167,14 +167,20 @@ describe('AudioRecorderService', () => {
       audioRecorderService.initialize()
     })
 
-    test('should send start recording command with device name', () => {
+    test('should send start recording command with device name', async () => {
       const deviceName = 'Built-in Microphone'
 
-      audioRecorderService.startRecording(deviceName)
+      const ready = audioRecorderService.startRecording(deviceName)
 
       expect(mockChildProcess.stdin.write).toHaveBeenCalledWith(
         JSON.stringify({ command: 'start', device_name: deviceName }) + '\n',
       )
+      emitRecorderMessage(
+        1,
+        Buffer.from(JSON.stringify({ type: 'recording-ready' })),
+      )
+      emitRecorderMessage(2, Buffer.alloc(32))
+      await ready
     })
 
     test('should send stop recording command', () => {
@@ -498,8 +504,79 @@ test('concurrent drain callers share a timeout and all settle', async () => {
   const first = audioRecorderService.awaitDrainComplete(20)
   const second = audioRecorderService.awaitDrainComplete(20)
   expect(second).toBe(first)
-  await Promise.all([first, second])
+  const outcomes = await Promise.allSettled([first, second])
+  expect(outcomes.every(result => result.status === 'rejected')).toBe(true)
   const next = audioRecorderService.awaitDrainComplete(10)
   expect(next).not.toBe(first)
-  await next
+  await expect(next).rejects.toThrow('drain timed out')
+})
+
+function emitRecorderMessage(type: number, payload: Buffer) {
+  const frame = Buffer.alloc(5 + payload.length)
+  frame[0] = type
+  frame.writeUInt32LE(payload.length, 1)
+  payload.copy(frame, 5)
+  mockChildProcess.stdout.emit('data', frame)
+}
+
+test('microphone startup needs both a native ready acknowledgment and first audio', async () => {
+  audioRecorderService.terminate()
+  mockChildProcess.stdout.removeAllListeners()
+  audioRecorderService.initialize()
+  let ready = false
+  const pending = audioRecorderService.startRecording('default').then(() => {
+    ready = true
+  })
+  emitRecorderMessage(
+    1,
+    Buffer.from(JSON.stringify({ type: 'recording-ready' })),
+  )
+  await Promise.resolve()
+  expect(ready).toBe(false)
+  emitRecorderMessage(2, Buffer.alloc(32))
+  await pending
+  expect(ready).toBe(true)
+  audioRecorderService.terminate()
+})
+
+test('missing first audio times out and permits a fresh helper on the next attempt', async () => {
+  mockChildProcess.stdout.removeAllListeners()
+  audioRecorderService.initialize()
+  const pending = audioRecorderService.startRecording('default', 15)
+  emitRecorderMessage(
+    1,
+    Buffer.from(JSON.stringify({ type: 'recording-ready' })),
+  )
+  await expect(pending).rejects.toThrow('produce audio')
+  mockChildProcess.stdout.removeAllListeners()
+  const retry = audioRecorderService.startRecording('default')
+  emitRecorderMessage(2, Buffer.alloc(32))
+  emitRecorderMessage(
+    1,
+    Buffer.from(JSON.stringify({ type: 'recording-ready' })),
+  )
+  await retry
+  audioRecorderService.terminate()
+})
+
+test('native startup errors reject readiness and recorder exits reject pending requests', async () => {
+  mockChildProcess.stdout.removeAllListeners()
+  audioRecorderService.initialize()
+  const pending = audioRecorderService.startRecording('missing')
+  emitRecorderMessage(
+    1,
+    Buffer.from(
+      JSON.stringify({ type: 'recording-error', message: 'No input device' }),
+    ),
+  )
+  await expect(pending).rejects.toThrow('No input device')
+  const devices = audioRecorderService.getDeviceList()
+  const drain = audioRecorderService.awaitDrainComplete()
+  const rejected = Promise.allSettled([devices, drain])
+  mockChildProcess._closeHandler!(1)
+  for (const result of await rejected) {
+    expect(result.status).toBe('rejected')
+    if (result.status === 'rejected')
+      expect(result.reason.message).toContain('exited')
+  }
 })

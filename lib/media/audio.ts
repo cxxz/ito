@@ -15,6 +15,13 @@ interface Message {
 class AudioRecorderService extends EventEmitter {
   #audioRecorderProcess: ChildProcessWithoutNullStreams | null = null
   #audioBuffer = Buffer.alloc(0)
+  #recordingRequested = false
+  #ready = false
+  #receivedAudio = false
+  #startWait: Promise<void> | null = null
+  #startup: { resolve: () => void; reject: (error: Error) => void } | null =
+    null
+  #deviceWait: Promise<string[]> | null = null
   #deviceListPromise: {
     resolve: (value: string[]) => void
     reject: (reason?: any) => void
@@ -54,10 +61,20 @@ class AudioRecorderService extends EventEmitter {
         stdio: ['pipe', 'pipe', 'pipe'],
       })
 
-      this.#audioRecorderProcess.stdout.on('data', this.#onData.bind(this))
-      this.#audioRecorderProcess.stderr.on('data', this.#onStdErr.bind(this))
-      this.#audioRecorderProcess.on('close', this.#onClose.bind(this))
-      this.#audioRecorderProcess.on('error', this.#onError.bind(this))
+      const child = this.#audioRecorderProcess
+      this.#audioBuffer = Buffer.alloc(0)
+      child.stdout.on('data', data => {
+        if (this.#audioRecorderProcess === child) this.#onData(data)
+      })
+      child.stderr.on('data', data => {
+        if (this.#audioRecorderProcess === child) this.#onStdErr(data)
+      })
+      child.on('close', code => {
+        if (this.#audioRecorderProcess === child) this.#onClose(code)
+      })
+      child.on('error', error => {
+        if (this.#audioRecorderProcess === child) this.#onError(error)
+      })
 
       this.emit('started')
     } catch (err) {
@@ -76,8 +93,10 @@ class AudioRecorderService extends EventEmitter {
   public terminate(): void {
     if (this.#audioRecorderProcess) {
       console.log('[AudioService] Stopping audio recorder process.')
-      this.#audioRecorderProcess.kill()
+      const child = this.#audioRecorderProcess
       this.#audioRecorderProcess = null
+      child.kill()
+      this.#rejectPending(new Error('Audio recorder terminated'))
       this.emit('stopped')
     }
   }
@@ -85,15 +104,50 @@ class AudioRecorderService extends EventEmitter {
   /**
    * Sends a command to start recording from a specific device.
    */
-  public startRecording(deviceName: string): void {
-    this.#sendCommand({ command: 'start', device_name: deviceName })
-    console.log(`[AudioService] Recording started on device: ${deviceName}`)
+  public startRecording(deviceName: string, timeoutMs = 5000): Promise<void> {
+    if (this.#startWait) return this.#startWait
+    if (!this.#audioRecorderProcess) this.initialize()
+    if (!this.#audioRecorderProcess)
+      return Promise.reject(new Error('Audio recorder process not running'))
+    this.#recordingRequested = true
+    this.#ready = false
+    this.#receivedAudio = false
+    this.#startWait = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#startup = null
+        // A wedged helper must not later deliver audio into another session.
+        this.terminate()
+        reject(new Error('Microphone did not become ready and produce audio'))
+      }, timeoutMs)
+      this.#startup = {
+        resolve: () => {
+          clearTimeout(timer)
+          this.#startup = null
+          resolve()
+        },
+        reject: error => {
+          clearTimeout(timer)
+          this.#startup = null
+          reject(error)
+        },
+      }
+      try {
+        this.#sendCommand({ command: 'start', device_name: deviceName })
+      } catch (error) {
+        this.#startup?.reject(error as Error)
+      }
+    }).finally(() => {
+      this.#startWait = null
+    })
+    return this.#startWait
   }
 
   /**
    * Sends a command to stop the current recording.
    */
   public stopRecording(): void {
+    this.#recordingRequested = false
+    this.#startup?.reject(new Error('Recording stopped during startup'))
     this.#sendCommand({ command: 'stop' })
     console.log('[AudioService] Recording stopped')
   }
@@ -101,14 +155,35 @@ class AudioRecorderService extends EventEmitter {
   /**
    * Requests a list of available audio devices from the native process.
    */
-  public getDeviceList(): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-      if (!this.#audioRecorderProcess) {
-        return reject(new Error('Audio recorder process not running.'))
+  public getDeviceList(timeoutMs = 3000): Promise<string[]> {
+    if (this.#deviceWait) return this.#deviceWait
+    if (!this.#audioRecorderProcess)
+      return Promise.reject(new Error('Audio recorder process not running.'))
+    this.#deviceWait = new Promise<string[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#deviceListPromise = null
+        reject(new Error('Audio device enumeration timed out'))
+      }, timeoutMs)
+      this.#deviceListPromise = {
+        resolve: value => {
+          clearTimeout(timer)
+          resolve(value)
+        },
+        reject: error => {
+          clearTimeout(timer)
+          reject(error)
+        },
       }
-      this.#deviceListPromise = { resolve, reject }
-      this.#sendCommand({ command: 'list-devices' })
+      try {
+        this.#sendCommand({ command: 'list-devices' })
+      } catch (error) {
+        this.#deviceListPromise.reject(error)
+        this.#deviceListPromise = null
+      }
+    }).finally(() => {
+      this.#deviceWait = null
     })
+    return this.#deviceWait
   }
 
   /**
@@ -136,13 +211,30 @@ class AudioRecorderService extends EventEmitter {
   #onClose(code: number | null): void {
     log.warn(`[AudioService] Process exited with code: ${code}`)
     this.#audioRecorderProcess = null
+    this.#rejectPending(new Error('Audio recorder exited unexpectedly'))
     this.emit('stopped')
   }
 
   #onError(err: Error): void {
     log.error('[AudioService] Failed to start audio recorder:', err)
     this.#audioRecorderProcess = null
+    this.#rejectPending(err)
     this.emit('error', err)
+  }
+
+  #rejectPending(error: Error) {
+    this.#audioBuffer = Buffer.alloc(0)
+    this.#startup?.reject(error)
+    this.#drainPromise?.reject(error)
+    this.#drainPromise = null
+    this.#deviceListPromise?.reject(error)
+    this.#deviceListPromise = null
+    if (this.#recordingRequested) this.emit('recording-error', error)
+    this.#recordingRequested = false
+  }
+
+  #checkReady() {
+    if (this.#ready && this.#receivedAudio) this.#startup?.resolve()
   }
 
   /**
@@ -195,7 +287,17 @@ class AudioRecorderService extends EventEmitter {
     if (message.type === 'json') {
       try {
         const jsonResponse = JSON.parse(message.payload.toString('utf-8'))
-        if (jsonResponse.type === 'device-list' && this.#deviceListPromise) {
+        if (jsonResponse.type === 'recording-ready') {
+          this.#ready = true
+          this.#checkReady()
+        } else if (jsonResponse.type === 'recording-error') {
+          const error = new Error(jsonResponse.message || 'Microphone failed')
+          this.#startup?.reject(error)
+          if (this.#recordingRequested) this.emit('recording-error', error)
+        } else if (
+          jsonResponse.type === 'device-list' &&
+          this.#deviceListPromise
+        ) {
           this.#deviceListPromise.resolve(jsonResponse.devices || [])
           this.#deviceListPromise = null
         } else if (jsonResponse.type === 'audio-config') {
@@ -229,6 +331,8 @@ class AudioRecorderService extends EventEmitter {
         }
       }
     } else if (message.type === 'audio') {
+      this.#receivedAudio = true
+      this.#checkReady()
       const volume = this.#calculateVolume(message.payload)
 
       this.emit('volume-update', volume)
@@ -244,7 +348,9 @@ class AudioRecorderService extends EventEmitter {
         if (!settled) {
           settled = true
           this.#drainPromise = null
-          resolve() // fallback: do not hang the stop flow
+          // Do not let a late writer drain into a replacement recording.
+          this.terminate()
+          reject(new Error('Audio recorder drain timed out'))
         }
       }, timeoutMs)
       this.#drainPromise = {

@@ -5,6 +5,7 @@ const mockAudioRecorderService = {
   startRecording: mock(),
   stopRecording: mock(),
   on: mock(),
+  off: mock(),
   initialize: mock(),
   requestDeviceConfig: mock(),
   awaitDrainComplete: mock(() => Promise.resolve()),
@@ -158,18 +159,20 @@ describe('VoiceInputService', () => {
       expect(mockUnmuteSystemAudio).toHaveBeenCalledTimes(1)
     })
 
-    test('should handle drain timeout gracefully', async () => {
+    test('propagates drain failure after restoring system audio', async () => {
       mockAudioRecorderService.awaitDrainComplete.mockRejectedValueOnce(
         new Error('Drain timeout'),
       )
       mockStore.get.mockReturnValue({
-        muteAudioWhenDictating: false,
+        muteAudioWhenDictating: true,
       })
 
-      await voiceInputService.stopAudioRecording()
+      await expect(voiceInputService.stopAudioRecording()).rejects.toThrow(
+        'Drain timeout',
+      )
 
       expect(mockAudioRecorderService.stopRecording).toHaveBeenCalledTimes(1)
-      // Should not throw and continue with cleanup
+      expect(mockUnmuteSystemAudio).toHaveBeenCalled()
     })
   })
 
