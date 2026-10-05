@@ -57,6 +57,8 @@ AUTH0_DOMAIN=your_auth0_domain.auth0.com
 AUTH0_AUDIENCE=http://localhost:3003
 ```
 
+To use `qwen-audio-3.1-asr-flash`, select it with the `aliyun` provider in the app or set `ALIYUN_DEFAULT_ASR_MODEL="qwen-audio-3.1-asr-flash"`. Configure `ALIYUN_API_KEY` with a key valid for QwenCloud. The client uses the [QwenCloud synchronous API](https://docs.qwencloud.com/developer-guides/speech/asr#synchronous-calls-qwen-audio-3x-asr-flashfun-asr-flash) for this model, sends WAV audio at 16 kHz, and passes dictionary entries as inline vocabulary. The default model remains `qwen3-asr-flash`.
+
 ### 2. Get Required API Keys
 
 #### GROQ API Key (Required)
@@ -186,28 +188,28 @@ bun run test-client      # Run gRPC client tests
 
 ### Environment Variables
 
-| Variable               | Required | Default                            | Description                                                     |
-| ---------------------- | -------- | ---------------------------------- | --------------------------------------------------------------- |
-| `PORT`                 | No       | `3003`                             | Server port                                                     |
-| `DB_HOST`              | Yes      | `localhost`                        | PostgreSQL host                                                 |
-| `DB_PORT`              | Yes      | `5432`                             | PostgreSQL port                                                 |
-| `DB_USER`              | Yes      | -                                  | Database username                                               |
-| `DB_PASS`              | Yes      | -                                  | Database password                                               |
-| `DB_NAME`              | Yes      | -                                  | Database name                                                   |
-| `GROQ_API_KEY`         | Yes      | -                                  | GROQ API key for transcription/LLM services                     |
-| `CEREBRAS_API_KEY`     | No       | -                                  | Cerebras API key for LLM                                        |
-| `OPENAI_API_KEY`       | No       | -                                  | OpenAI API key (enables OpenAI LLM provider)                    |
-| `ALIYUN_API_KEY`       | No       | -                                  | Aliyun API key (enables Aliyun ASR/LLM provider)                |
-| `OPENAI_BASE_URL`      | No       | `https://api.openai.com/v1`        | OpenAI-compatible API base URL                                  |
-| `ASR_PROVIDER`            | No       | `groq`                             | Default ASR provider (groq, aliyun)                             |
-| `GROQ_DEFAULT_ASR_MODEL`  | No       | `whisper-large-v3-turbo`                 | Default ASR model when ASR provider is `groq`                   |
-| `ALIYUN_DEFAULT_ASR_MODEL`| No       | `qwen3-asr-flash`                  | Default ASR model when ASR provider is `aliyun`                 |
-| `OPENAI_DEFAULT_LLM`      | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`                 |
-| `GROQ_DEFAULT_LLM`     | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`                   |
-| `CEREBRAS_DEFAULT_LLM` | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras`               |
-| `REQUIRE_AUTH`         | No       | `false`                            | Enable Auth0 authentication                                     |
-| `AUTH0_DOMAIN`         | No\*     | -                                  | Auth0 domain (\*required if auth enabled)                       |
-| `AUTH0_AUDIENCE`       | No\*     | -                                  | Auth0 audience (\*required if auth enabled)                     |
+| Variable                   | Required | Default                            | Description                                       |
+| -------------------------- | -------- | ---------------------------------- | ------------------------------------------------- |
+| `PORT`                     | No       | `3003`                             | Server port                                       |
+| `DB_HOST`                  | Yes      | `localhost`                        | PostgreSQL host                                   |
+| `DB_PORT`                  | Yes      | `5432`                             | PostgreSQL port                                   |
+| `DB_USER`                  | Yes      | -                                  | Database username                                 |
+| `DB_PASS`                  | Yes      | -                                  | Database password                                 |
+| `DB_NAME`                  | Yes      | -                                  | Database name                                     |
+| `GROQ_API_KEY`             | Yes      | -                                  | GROQ API key for transcription/LLM services       |
+| `CEREBRAS_API_KEY`         | No       | -                                  | Cerebras API key for LLM                          |
+| `OPENAI_API_KEY`           | No       | -                                  | OpenAI API key (enables OpenAI LLM provider)      |
+| `ALIYUN_API_KEY`           | No       | -                                  | Aliyun API key (enables Aliyun ASR/LLM provider)  |
+| `OPENAI_BASE_URL`          | No       | `https://api.openai.com/v1`        | OpenAI-compatible API base URL                    |
+| `ASR_PROVIDER`             | No       | `groq`                             | Default ASR provider (groq, aliyun)               |
+| `GROQ_DEFAULT_ASR_MODEL`   | No       | `whisper-large-v3-turbo`           | Default ASR model when ASR provider is `groq`     |
+| `ALIYUN_DEFAULT_ASR_MODEL` | No       | `qwen3-asr-flash`                  | Default ASR model when ASR provider is `aliyun`   |
+| `OPENAI_DEFAULT_LLM`       | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`   |
+| `GROQ_DEFAULT_LLM`         | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`     |
+| `CEREBRAS_DEFAULT_LLM`     | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras` |
+| `REQUIRE_AUTH`             | No       | `false`                            | Enable Auth0 authentication                       |
+| `AUTH0_DOMAIN`             | No\*     | -                                  | Auth0 domain (\*required if auth enabled)         |
+| `AUTH0_AUDIENCE`           | No\*     | -                                  | Auth0 audience (\*required if auth enabled)       |
 
 ### How Defaults Show Up In The App
 

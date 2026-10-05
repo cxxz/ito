@@ -1,7 +1,7 @@
 # Dockerfile
 FROM oven/bun:1-alpine AS base
 
-WORKDIR /
+WORKDIR /srv/ito
 
 # Copy package files
 COPY package.json bun.lock ./

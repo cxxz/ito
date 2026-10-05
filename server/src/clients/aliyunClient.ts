@@ -17,6 +17,8 @@ dotenv.config()
 
 const ALIYUN_API_URL =
   'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+const QWENCLOUD_API_URL =
+  'https://maas.qwencloudapi.com/api/v1/services/aigc/multimodal-generation/generation'
 const DEFAULT_ASR_MODEL = 'qwen3-asr-flash'
 
 export const itoVocabulary = ['LLM', 'Claude']
@@ -24,6 +26,10 @@ export const itoVocabulary = ['LLM', 'Claude']
 interface ContentItem {
   text?: string
   audio?: string
+  type?: 'input_audio'
+  input_audio?: {
+    data: string
+  }
 }
 
 interface Message {
@@ -41,9 +47,13 @@ interface RequestPayload {
   input: {
     messages: Message[]
   }
-  parameters: {
-    asr_options: AsrOptions
-  }
+  parameters:
+    | { asr_options: AsrOptions }
+    | {
+        format: 'wav'
+        sample_rate: '16000'
+        vocabulary: Record<string, number>
+      }
 }
 
 interface ResponseChoice {
@@ -54,8 +64,14 @@ interface ResponseChoice {
 }
 
 interface ApiResponse {
-  output: {
-    choices: ResponseChoice[]
+  output?: {
+    choices?: ResponseChoice[]
+    output?: {
+      sentence?: {
+        text?: string
+      }
+    }
+    text?: string
   }
   usage?: {
     input_tokens: number
@@ -125,31 +141,55 @@ class AliyunClient implements LlmProvider {
       const base64Audio = audioBuffer.toString('base64')
       const dataUrl = `data:audio/wav;base64,${base64Audio}`
 
-      // Build vocabulary prompt for context biasing
+      // Qwen-Audio uses a different request and response format from Qwen3-ASR.
+      const isQwenAudioAsr = asrModel === 'qwen-audio-3.1-asr-flash'
       const vocabulary = options?.vocabulary
       const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
-      const transcriptionPrompt = createAsrPrompt(fullVocabulary)
 
-      const payload: RequestPayload = {
-        model: asrModel,
-        input: {
-          messages: [
-            {
-              role: 'system',
-              content: [{ text: transcriptionPrompt }],
+      const payload: RequestPayload = isQwenAudioAsr
+        ? {
+            model: asrModel,
+            input: {
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'input_audio', input_audio: { data: dataUrl } },
+                  ],
+                },
+              ],
             },
-            {
-              role: 'user',
-              content: [{ audio: dataUrl }],
+            parameters: {
+              format: 'wav',
+              sample_rate: '16000',
+              vocabulary: Object.fromEntries(
+                fullVocabulary
+                  .map(word => word.trim())
+                  .filter(Boolean)
+                  .map(word => [word, 5]),
+              ),
             },
-          ],
-        },
-        parameters: {
-          asr_options: {
-            enable_itn: false,
-          },
-        },
-      }
+          }
+        : {
+            model: asrModel,
+            input: {
+              messages: [
+                {
+                  role: 'system',
+                  content: [{ text: createAsrPrompt(fullVocabulary) }],
+                },
+                {
+                  role: 'user',
+                  content: [{ audio: dataUrl }],
+                },
+              ],
+            },
+            parameters: {
+              asr_options: {
+                enable_itn: false,
+              },
+            },
+          }
 
       console.log(
         'Aliyun request payload:',
@@ -157,11 +197,20 @@ class AliyunClient implements LlmProvider {
           {
             ...payload,
             input: {
-              messages: payload.input.messages.map((m) => ({
+              messages: payload.input.messages.map(m => ({
                 ...m,
-                content: m.content.map((c) =>
-                  c.audio ? { audio: '[BASE64_AUDIO_OMITTED]' } : c,
-                ),
+                content: m.content.map(c => {
+                  if (c.audio) {
+                    return { ...c, audio: '[BASE64_AUDIO_OMITTED]' }
+                  }
+                  if (c.input_audio) {
+                    return {
+                      ...c,
+                      input_audio: { data: '[BASE64_AUDIO_OMITTED]' },
+                    }
+                  }
+                  return c
+                }),
               })),
             },
           },
@@ -170,14 +219,18 @@ class AliyunClient implements LlmProvider {
         ),
       )
 
-      const response = await fetch(ALIYUN_API_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this._apiKey}`,
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        isQwenAudioAsr ? QWENCLOUD_API_URL : ALIYUN_API_URL,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this._apiKey}`,
+            'Content-Type': 'application/json',
+            ...(isQwenAudioAsr ? { 'X-DashScope-SSE': 'disable' } : {}),
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      })
+      )
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -205,9 +258,9 @@ class AliyunClient implements LlmProvider {
         )
       }
 
-      // Extract transcription from nested response structure
-      const transcription =
-        result?.output?.choices?.[0]?.message?.content?.[0]?.text
+      const transcription = isQwenAudioAsr
+        ? (result?.output?.output?.sentence?.text ?? result?.output?.text)
+        : result?.output?.choices?.[0]?.message?.content?.[0]?.text
 
       if (transcription === undefined || transcription === null) {
         console.log('Aliyun API response:', JSON.stringify(result, null, 2))

@@ -1,4 +1,12 @@
-import { describe, it, expect, mock, beforeEach, afterAll } from 'bun:test'
+import {
+  describe,
+  it,
+  expect,
+  mock,
+  beforeEach,
+  afterAll,
+  spyOn,
+} from 'bun:test'
 
 // Mock environment variables before any imports
 const originalEnv = process.env
@@ -8,8 +16,11 @@ process.env = {
 }
 
 // Mock fetch
+const originalFetch = globalThis.fetch
 const mockFetch = mock()
-globalThis.fetch = mockFetch as typeof fetch
+globalThis.fetch = Object.assign(mockFetch, {
+  preconnect: originalFetch.preconnect,
+})
 
 // Mock dotenv to prevent .env file loading
 mock.module('dotenv', () => ({
@@ -26,6 +37,7 @@ describe('AliyunClient', () => {
 
   afterAll(() => {
     process.env = originalEnv
+    globalThis.fetch = originalFetch
   })
 
   describe('transcribeAudio', () => {
@@ -75,6 +87,133 @@ describe('AliyunClient', () => {
       expect(body.input.messages[1].content[0].audio).toMatch(
         /^data:audio\/wav;base64,/,
       )
+      expect(body.parameters).toEqual({ asr_options: { enable_itn: false } })
+    })
+
+    it('should transcribe Qwen-Audio with its required payload and response format', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            output: {
+              output: { sentence: { text: '  Hello Claude Code  ' } },
+            },
+          }),
+      })
+
+      const audioBuffer = Buffer.from('mock audio data')
+      const result = await aliyunClient!.transcribeAudio(audioBuffer, {
+        asrModel: 'qwen-audio-3.1-asr-flash',
+        vocabulary: ['Claude Code', 'LLM', ' AIRL ', ''],
+      })
+
+      expect(result).toBe('Hello Claude Code')
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(
+        'https://maas.qwencloudapi.com/api/v1/services/aigc/multimodal-generation/generation',
+      )
+      expect(options.method).toBe('POST')
+      expect(options.headers).toEqual({
+        Authorization: 'Bearer test-api-key',
+        'Content-Type': 'application/json',
+        'X-DashScope-SSE': 'disable',
+      })
+      expect(JSON.parse(options.body as string)).toEqual({
+        model: 'qwen-audio-3.1-asr-flash',
+        input: {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_audio',
+                  input_audio: {
+                    data: `data:audio/wav;base64,${audioBuffer.toString('base64')}`,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        parameters: {
+          format: 'wav',
+          sample_rate: '16000',
+          vocabulary: { LLM: 5, Claude: 5, 'Claude Code': 5, AIRL: 5 },
+        },
+      })
+    })
+
+    it('should accept Qwen-Audio output.text when no sentence is returned', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ output: { text: '  Hello world  ' } }),
+      })
+
+      const result = await aliyunClient!.transcribeAudio(Buffer.from('audio'), {
+        asrModel: 'qwen-audio-3.1-asr-flash',
+      })
+
+      expect(result).toBe('Hello world')
+    })
+
+    it('should accept an empty Qwen-Audio transcription', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            output: { output: { sentence: { text: '' } } },
+          }),
+      })
+
+      const result = await aliyunClient!.transcribeAudio(Buffer.from('audio'), {
+        asrModel: 'qwen-audio-3.1-asr-flash',
+      })
+
+      expect(result).toBe('')
+    })
+
+    it('should reject a Qwen-Audio response without transcription text', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ output: { output: { sentence: {} } } }),
+      })
+
+      await expect(
+        aliyunClient!.transcribeAudio(Buffer.from('audio'), {
+          asrModel: 'qwen-audio-3.1-asr-flash',
+        }),
+      ).rejects.toThrow('No transcription text in response')
+    })
+
+    it('should omit Qwen-Audio base64 data from request logs', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ output: { text: 'Hello world' } }),
+      })
+      const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+
+      try {
+        const audioBuffer = Buffer.from('private audio content')
+        await aliyunClient!.transcribeAudio(audioBuffer, {
+          asrModel: 'qwen-audio-3.1-asr-flash',
+        })
+
+        const payloadLog = logSpy.mock.calls.find(
+          ([message]) => message === 'Aliyun request payload:',
+        )
+        expect(payloadLog).toBeDefined()
+        const loggedPayload = payloadLog![1] as string
+        expect(loggedPayload).toContain('[BASE64_AUDIO_OMITTED]')
+        expect(loggedPayload).not.toContain(audioBuffer.toString('base64'))
+        expect(
+          JSON.parse(loggedPayload).input.messages[0].content[0].input_audio
+            .data,
+        ).toBe('[BASE64_AUDIO_OMITTED]')
+      } finally {
+        logSpy.mockRestore()
+      }
     })
 
     it('should use default ASR model when not specified', async () => {
