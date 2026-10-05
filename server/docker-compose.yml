@@ -2,7 +2,7 @@ services:
   ito-grpc-server:
     build: .
     ports:
-      - '$PORT:$PORT'
+      - '127.0.0.1:$PORT:$PORT'
     env_file:
       - ./.env
     volumes:
