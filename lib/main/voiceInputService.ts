@@ -7,6 +7,7 @@ import { IPC_EVENTS } from '../types/ipc'
 import log from 'electron-log'
 
 export class VoiceInputService {
+  private stopPromise: Promise<void> | null = null
   /**
    * Starts audio recording and handles system audio muting.
    * Does NOT start the ItoStreamController - that should be done separately.
@@ -37,8 +38,17 @@ export class VoiceInputService {
    * Stops audio recording and handles system audio unmuting.
    * Waits for the audio recorder to drain before returning.
    */
-  public stopAudioRecording = async () => {
+  public stopAudioRecording = (): Promise<void> => {
+    if (this.stopPromise) return this.stopPromise
+    this.stopPromise = this.stop().finally(() => {
+      this.stopPromise = null
+    })
+    return this.stopPromise
+  }
+
+  private async stop() {
     console.log('[VoiceInputService] Stopping audio recording')
+    const drain = audioRecorderService.awaitDrainComplete(500)
     audioRecorderService.stopRecording()
     console.log(
       '[VoiceInputService] Audio recorder stopped, waiting for drain...',
@@ -46,7 +56,7 @@ export class VoiceInputService {
 
     // Wait for explicit drain-complete signal from the recorder (with timeout fallback)
     try {
-      await (audioRecorderService as any).awaitDrainComplete?.(500)
+      await drain
       console.log('[VoiceInputService] Drain complete')
     } catch (e) {
       log.warn('[VoiceInputService] drain-complete wait failed, proceeding:', e)

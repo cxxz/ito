@@ -11,95 +11,144 @@ import log from 'electron-log'
 import { timingCollector, TimingEventName } from './timing/TimingCollector'
 import { Code } from '@connectrpc/connect'
 
+type StreamResult = {
+  response: any
+  audioBuffer: Buffer
+  sampleRate: number
+}
+
+type Session = {
+  mode: ItoMode
+  phase: 'starting' | 'recording' | 'finishing'
+  cancelled: boolean
+  contextClosed: boolean
+  cancelledPromise: Promise<void>
+  resolveCancelled: () => void
+  startPromise?: Promise<string | undefined>
+  responsePromise?: Promise<StreamResult>
+  contextPromise?: Promise<void>
+  finishPromise?: Promise<void>
+  failurePromise?: Promise<void>
+  cancelPromise?: Promise<void>
+  stopPromise?: Promise<void>
+  grammar: GrammarRulesService
+}
+
 export class ItoSessionManager {
   private readonly MINIMUM_AUDIO_DURATION_MS = 100
   private textInserter = new TextInserter()
-  private streamResponsePromise: Promise<{
-    response: any
-    audioBuffer: Buffer
-    sampleRate: number
-  }> | null = null
-  private contextFetchPromise: Promise<void> | null = null
-  private grammarRulesService = new GrammarRulesService('')
+  private session: Session | null = null
 
-  public async startSession(mode: ItoMode) {
-    console.log('[itoSessionManager] Starting session with mode:', mode)
-
-    // Reuse existing global interaction ID if present, otherwise create a new one
-    let interactionId = interactionManager.getCurrentInteractionId()
-    if (interactionId) {
-      console.log(
-        '[itoSessionManager] Reusing existing interaction ID:',
-        interactionId,
-      )
-      interactionManager.adoptInteractionId(interactionId)
-    } else {
-      interactionId = interactionManager.initialize()
+  public startSession(mode: ItoMode): Promise<string | undefined> {
+    // All entry points (keyboard, pill, IPC) share this gate through cleanup.
+    if (this.session) return Promise.resolve(undefined)
+    let resolveCancelled!: () => void
+    const cancelledPromise = new Promise<void>(resolve => {
+      resolveCancelled = resolve
+    })
+    const session: Session = {
+      mode,
+      phase: 'starting',
+      cancelled: false,
+      contextClosed: false,
+      cancelledPromise,
+      resolveCancelled,
+      grammar: new GrammarRulesService(''),
     }
-
-    // Initialize all necessary components
-    const started = await itoStreamController.initialize(mode)
-    if (!started) {
-      log.error('[itoSessionManager] Failed to initialize itoStreamController')
-      return
-    }
-
-    // Register the interaction with the timing collector before any code path
-    // (e.g. startGrpcStream → SERVER_DICTATION timing) tries to record events
-    // against it.
-    timingCollector.startInteraction()
-    timingCollector.startTiming(TimingEventName.INTERACTION_ACTIVE)
-
-    // Begin gRPC stream immediately (note, no audio is flowing yet)
-    // Pass a phase update callback to notify UI when polishing or editing starts
-    this.streamResponsePromise = itoStreamController.startGrpcStream(phase => {
-      if (phase === TranscribePhase.PHASE_POLISHING) {
-        recordingStateNotifier.notifyPolishingStarted()
-      } else if (phase === TranscribePhase.PHASE_EDITING) {
-        recordingStateNotifier.notifyEditingStarted()
-      }
-    })
-    const streamPromise = this.streamResponsePromise
-    this.streamResponsePromise.catch(error => {
-      console.error(
-        '[itoSessionManager] Stream failed before completion:',
-        error,
-      )
-      if (this.streamResponsePromise !== streamPromise) {
-        return
-      }
-      void this.handleStreamFailureDuringRecording(error)
-    })
-
-    // Begin recording audio (audio bytes will now flow into the gRPC stream)
-    voiceInputService.startAudioRecording()
-
-    // Send initial mode to the stream
-    itoStreamController.setMode(mode)
-
-    // Update UI state
-    recordingStateNotifier.notifyRecordingStarted(mode)
-
-    // Fetch and send context in the background (non-blocking)
-    this.contextFetchPromise = this.fetchAndSendContext().catch(error => {
-      console.error('[itoSessionManager] Failed to fetch/send context:', error)
-    })
-
-    return interactionId
+    this.session = session
+    session.startPromise = this.start(session)
+    return session.startPromise
   }
 
-  private async fetchAndSendContext() {
-    console.log('[itoSessionManager] Gathering context...')
+  private async start(session: Session): Promise<string | undefined> {
+    try {
+      const started = await itoStreamController.initialize(session.mode)
+      if (!started) {
+        this.release(session)
+        return
+      }
+      if (session.cancelled) return
+      let interactionId = interactionManager.getCurrentInteractionId()
+      if (interactionId) interactionManager.adoptInteractionId(interactionId)
+      else interactionId = interactionManager.initialize()
+      timingCollector.startInteraction()
+      timingCollector.startTiming(TimingEventName.INTERACTION_ACTIVE)
+      session.responsePromise = itoStreamController.startGrpcStream(phase => {
+        if (this.session !== session || session.cancelled) return
+        if (phase === TranscribePhase.PHASE_POLISHING)
+          recordingStateNotifier.notifyPolishingStarted()
+        else if (phase === TranscribePhase.PHASE_EDITING)
+          recordingStateNotifier.notifyEditingStarted()
+      })
+      // Attach a rejection handler immediately, including during recorder startup.
+      void session.responsePromise.catch(error => {
+        if (
+          this.session !== session ||
+          session.cancelled ||
+          session.finishPromise ||
+          session.phase === 'finishing'
+        )
+          return
+        session.phase = 'finishing'
+        session.failurePromise = this.fail(session, error)
+      })
+      await voiceInputService.startAudioRecording()
+      if (session.cancelled || session.phase === 'finishing') return
+      session.phase = 'recording'
+      itoStreamController.setMode(session.mode)
+      recordingStateNotifier.notifyRecordingStarted(session.mode)
+      session.contextPromise = this.fetchAndSendContext(session).catch(
+        error => {
+          console.error('[itoSessionManager] Failed to fetch context:', error)
+        },
+      )
+      return interactionId
+    } catch (error) {
+      if (!session.failurePromise) {
+        session.phase = 'finishing'
+        session.failurePromise = this.fail(session, error)
+      }
+      await session.failurePromise
+      return undefined
+    }
+  }
 
-    // Gather all context data (window, app, selected text, vocabulary, settings)
-    const context = await contextGrabber.gatherContext(
-      itoStreamController.getCurrentMode(),
-    )
+  private stopAudio(session: Session) {
+    session.stopPromise ??= voiceInputService.stopAudioRecording()
+    return session.stopPromise
+  }
 
-    // Send the gathered context to the stream controller
+  private async fail(session: Session, error: unknown) {
+    try {
+      itoStreamController.cancelTranscription()
+      await this.stopAudio(session)
+      if (!session.cancelled) await this.handleTranscriptionError(error)
+    } catch (cleanupError) {
+      console.error('[itoSessionManager] Session cleanup failed:', cleanupError)
+    } finally {
+      this.release(session)
+    }
+  }
+
+  private release(session: Session) {
+    session.contextClosed = true
+    if (this.session !== session) return
+    recordingStateNotifier.notifyRecordingStopped()
+    recordingStateNotifier.notifyEditingStopped()
+    recordingStateNotifier.notifyPolishingStopped()
+    recordingStateNotifier.notifyProcessingStopped()
+    timingCollector.clearInteraction()
+    interactionManager.clearCurrentInteraction()
+    itoStreamController.clearInteractionAudio()
+    this.session = null
+  }
+
+  private async fetchAndSendContext(session: Session) {
+    const context = await contextGrabber.gatherContext(session.mode)
+    if (this.session !== session || session.cancelled || session.contextClosed)
+      return
     await itoStreamController.scheduleConfigUpdate(context)
-
-    this.fetchCursorContextForGrammar().catch(error => {
+    void this.fetchCursorContextForGrammar(session).catch(error => {
       console.error(
         '[itoSessionManager] Failed to fetch grammar context:',
         error,
@@ -107,215 +156,129 @@ export class ItoSessionManager {
     })
   }
 
-  private async handleStreamFailureDuringRecording(error: unknown) {
-    try {
-      if (!itoStreamController.isStreaming()) {
-        return
-      }
-
-      console.error(
-        '[itoSessionManager] Stream failed while recording, cleaning up...',
-        error,
-      )
-      this.streamResponsePromise = null
-      this.contextFetchPromise = null
-
-      itoStreamController.cancelTranscription()
-      try {
-        await voiceInputService.stopAudioRecording()
-      } catch (stopError) {
-        console.error(
-          '[itoSessionManager] Failed to stop audio after stream error:',
-          stopError,
-        )
-      }
-
-      recordingStateNotifier.notifyRecordingStopped()
-      recordingStateNotifier.notifyEditingStopped()
-      recordingStateNotifier.notifyPolishingStopped()
-      recordingStateNotifier.notifyProcessingStopped()
-
-      try {
-        await this.handleTranscriptionError(error)
-      } catch (handleError) {
-        console.error(
-          '[itoSessionManager] Failed to handle transcription error after stream failure:',
-          handleError,
-        )
-      }
-    } catch (cleanupError) {
-      console.error(
-        '[itoSessionManager] Failed to clean up after stream failure:',
-        cleanupError,
-      )
-    }
-  }
-
-  private async fetchCursorContextForGrammar() {
-    const { grammarServiceEnabled } = getAdvancedSettings()
-    if (!grammarServiceEnabled) {
-      return
-    }
-
-    const cursorContext = await timingCollector.timeAsync(
+  private async fetchCursorContextForGrammar(session: Session) {
+    if (!getAdvancedSettings().grammarServiceEnabled) return
+    const context = await timingCollector.timeAsync(
       TimingEventName.GRAMMAR_SERVICE,
-      async () => await contextGrabber.getCursorContextForGrammar(),
+      () => contextGrabber.getCursorContextForGrammar(),
     )
-    this.grammarRulesService = new GrammarRulesService(cursorContext)
+    if (
+      this.session === session &&
+      !session.cancelled &&
+      !session.contextClosed
+    ) {
+      session.grammar = new GrammarRulesService(context)
+    }
   }
 
-  private async refreshVocabularyAtEnd() {
+  private async refreshVocabularyAtEnd(session: Session) {
     try {
-      const mode = itoStreamController.getCurrentMode()
-      const vocabularyWords = await contextGrabber.gatherVocabularyWords(mode)
-
-      if (vocabularyWords.length === 0) {
-        console.log(
-          '[itoSessionManager] No vocabulary update to send at recording end',
-        )
-        return
-      }
-
-      await itoStreamController.scheduleVocabularyUpdate(vocabularyWords)
-    } catch (error) {
-      console.error(
-        '[itoSessionManager] Failed to refresh vocabulary at recording end:',
-        error,
+      const vocabulary = await contextGrabber.gatherVocabularyWords(
+        session.mode,
       )
+      if (
+        this.session === session &&
+        !session.cancelled &&
+        !session.contextClosed
+      ) {
+        await itoStreamController.scheduleVocabularyUpdate(vocabulary)
+      }
+    } catch (error) {
+      console.error('[itoSessionManager] Failed to refresh vocabulary:', error)
     }
   }
 
   public setMode(mode: ItoMode) {
-    // Send mode change to grpc stream (will also update windows via recordingStateNotifier)
-    itoStreamController.setMode(mode)
-
-    // Update UI to show the new mode
-    recordingStateNotifier.notifyRecordingStarted(mode)
+    const session = this.session
+    if (!session || session.cancelled || session.phase === 'finishing') return
+    session.mode = mode
+    if (session.phase === 'recording') {
+      itoStreamController.setMode(mode)
+      recordingStateNotifier.notifyRecordingStarted(mode)
+    }
   }
 
-  public async cancelSession() {
-    // Capture the promise in a local variable immediately so new sessions can start
-    const responsePromise = this.streamResponsePromise
-    this.streamResponsePromise = null
-
-    // Clear timing for the interaction on cancel
-    timingCollector.clearInteraction()
-
-    // Cancel the transcription (will not create interaction)
+  public cancelSession(): Promise<void> {
+    const session = this.session
+    if (!session) return Promise.resolve()
+    if (session.cancelPromise) return session.cancelPromise
+    session.cancelled = true
+    session.resolveCancelled()
     itoStreamController.cancelTranscription()
-    interactionManager.clearCurrentInteraction()
-
-    // Stop audio recording
-    await voiceInputService.stopAudioRecording()
-
-    // Update UI state
-    recordingStateNotifier.notifyRecordingStopped()
-
-    this.contextFetchPromise = null
-
-    // Wait for the stream promise to reject with cancellation error
-    if (responsePromise) {
-      try {
-        await responsePromise
-      } catch (error) {
-        // Expected cancellation error, log and ignore
-        console.log('[itoSessionManager] Stream cancelled as expected:', error)
-      }
-    }
+    session.cancelPromise = this.cancel(session)
+    return session.cancelPromise
   }
 
-  public async completeSession() {
-    // Capture the promise in a local variable immediately so new sessions can start
-    const responsePromise = this.streamResponsePromise
-    this.streamResponsePromise = null
-
-    // End timing for the interaction
-    timingCollector.endTiming(TimingEventName.INTERACTION_ACTIVE)
-
-    // Stop audio recording and wait for drain
-    await voiceInputService.stopAudioRecording()
-
-    // Check actual audio duration (keyboard duration can be misleading due to latency)
-    const audioDurationMs = itoStreamController.getAudioDurationMs()
-
-    if (audioDurationMs < this.MINIMUM_AUDIO_DURATION_MS) {
-      console.log(
-        `[itoSessionManager] Audio too short (${audioDurationMs}ms < ${this.MINIMUM_AUDIO_DURATION_MS}ms), cancelling`,
-      )
+  private async cancel(session: Session) {
+    try {
+      await session.startPromise
       itoStreamController.cancelTranscription()
-      recordingStateNotifier.notifyRecordingStopped()
-      this.contextFetchPromise = null
-
-      // Wait for the stream promise to reject with cancellation error
-      if (responsePromise) {
-        try {
-          await responsePromise
-        } catch (error) {
-          // Expected cancellation error, log and ignore
-          console.log(
-            '[itoSessionManager] Stream cancelled as expected:',
-            error,
-          )
-        }
-      }
-      return
+      await this.stopAudio(session)
+      await session.responsePromise?.catch(() => {})
+      await session.finishPromise
+      await session.failurePromise
+    } finally {
+      this.release(session)
     }
-
-    if (this.contextFetchPromise) {
-      await this.contextFetchPromise
-      this.contextFetchPromise = null
-    }
-
-    await this.refreshVocabularyAtEnd()
-
-    // End the interaction (this will complete the gRPC stream)
-    itoStreamController.endInteraction()
-
-    // Update UI state
-    recordingStateNotifier.notifyRecordingStopped()
-
-    // Notify processing started
-    recordingStateNotifier.notifyProcessingStarted()
-
-    // Wait for the stream response and handle it
-    if (responsePromise) {
-      console.log(
-        '[itoSessionManager] Waiting for stream response from server...',
-      )
-      try {
-        const result = await responsePromise
-        console.log('[itoSessionManager] Received stream response:', {
-          hasTranscript: !!result.response?.transcript,
-          transcriptLength: result.response?.transcript?.length || 0,
-          hasError: !!result.response?.error,
-          audioBufferSize: result.audioBuffer.length,
-        })
-        await this.handleTranscriptionResponse(result)
-      } catch (error) {
-        console.error(
-          '[itoSessionManager] Error waiting for stream response:',
-          error,
-        )
-        await this.handleTranscriptionError(error)
-      } finally {
-        // Always notify processing, polishing, and editing stopped after handling response
-        recordingStateNotifier.notifyEditingStopped()
-        recordingStateNotifier.notifyPolishingStopped()
-        recordingStateNotifier.notifyProcessingStopped()
-      }
-    } else {
-      console.warn('[itoSessionManager] No stream response promise to wait for')
-      recordingStateNotifier.notifyProcessingStopped()
-    }
-
-    this.contextFetchPromise = null
   }
 
-  private async handleTranscriptionResponse(result: {
-    response: any
-    audioBuffer: Buffer
-    sampleRate: number
-  }) {
+  public completeSession(): Promise<void> {
+    const session = this.session
+    if (!session) return Promise.resolve()
+    if (session.cancelPromise) return session.cancelPromise
+    if (session.failurePromise) return session.failurePromise
+    if (session.finishPromise) return session.finishPromise
+    session.finishPromise = this.complete(session)
+    return session.finishPromise
+  }
+
+  private async complete(session: Session) {
+    try {
+      await session.startPromise
+      if (session.cancelled || this.session !== session) return
+      session.phase = 'finishing'
+      timingCollector.endTiming(TimingEventName.INTERACTION_ACTIVE)
+      await this.stopAudio(session)
+      if (session.cancelled) return
+      if (
+        itoStreamController.getAudioDurationMs() <
+        this.MINIMUM_AUDIO_DURATION_MS
+      ) {
+        session.cancelled = true
+        itoStreamController.cancelTranscription()
+        await session.responsePromise?.catch(() => {})
+        return
+      }
+      await Promise.race([session.contextPromise, session.cancelledPromise])
+      if (session.cancelled) return
+      await Promise.race([
+        this.refreshVocabularyAtEnd(session),
+        session.cancelledPromise,
+      ])
+      if (session.cancelled) return
+      session.contextClosed = true
+      itoStreamController.endInteraction()
+      recordingStateNotifier.notifyRecordingStopped()
+      recordingStateNotifier.notifyProcessingStarted()
+      const result = await session.responsePromise
+      if (result && !session.cancelled)
+        await this.handleTranscriptionResponse(result, session)
+    } catch (error) {
+      itoStreamController.cancelTranscription()
+      if (!session.cancelled) await this.handleTranscriptionError(error)
+    } finally {
+      this.release(session)
+    }
+  }
+
+  private async handleTranscriptionResponse(
+    result: {
+      response: any
+      audioBuffer: Buffer
+      sampleRate: number
+    },
+    session: Session,
+  ) {
     const { response, audioBuffer, sampleRate } = result
 
     const errorMessage = response.error ? response.error.message : undefined
@@ -338,19 +301,18 @@ export class ItoSessionManager {
         // Apply grammar rules only if grammar service is enabled
         const { grammarServiceEnabled } = getAdvancedSettings()
         if (grammarServiceEnabled) {
-          textToInsert = this.grammarRulesService.setCaseFirstWord(textToInsert)
-          textToInsert =
-            this.grammarRulesService.addLeadingSpaceIfNeeded(textToInsert)
+          textToInsert = session.grammar.setCaseFirstWord(textToInsert)
+          textToInsert = session.grammar.addLeadingSpaceIfNeeded(textToInsert)
         }
 
-        this.textInserter.insertText(textToInsert)
+        await this.textInserter.insertText(textToInsert)
 
         // Create interaction in database
         await interactionManager.upsertInteractionFromServer({
           responseTranscript: response.transcript,
           audioBuffer,
           sampleRate,
-          mode: itoStreamController.getCurrentMode(),
+          mode: session.mode,
         })
       } else {
         log.warn('[itoSessionManager] Skipping text insertion:', {

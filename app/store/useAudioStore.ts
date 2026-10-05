@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import log from 'electron-log'
 
 interface AudioState {
   isRecording: boolean
@@ -7,6 +6,7 @@ interface AudioState {
   setIsShortcutEnabled: (enabled: boolean) => void
   startRecording: () => Promise<void>
   stopRecording: () => Promise<void>
+  cancelRecording: () => Promise<void>
 }
 
 export const useAudioStore = create<AudioState>((set, get) => ({
@@ -26,6 +26,11 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     // Signal the main process to start the gRPC stream and tell the
     // native recorder to begin capturing.
     window.api.send('start-native-recording')
+  },
+
+  cancelRecording: async () => {
+    window.api.send('cancel-native-recording')
+    set({ isRecording: false })
   },
 
   stopRecording: async () => {

@@ -255,6 +255,7 @@ describe('itoSessionManager', () => {
     const { ItoSessionManager } = await import('./itoSessionManager')
     const session = new ItoSessionManager()
 
+    await session.startSession(ItoMode.TRANSCRIBE)
     session.setMode(ItoMode.EDIT)
 
     expect(mockItoStreamController.setMode).toHaveBeenCalledWith(ItoMode.EDIT)
@@ -267,6 +268,7 @@ describe('itoSessionManager', () => {
     const { ItoSessionManager } = await import('./itoSessionManager')
     const session = new ItoSessionManager()
 
+    await session.startSession(ItoMode.TRANSCRIBE)
     await session.cancelSession()
 
     expect(mockItoStreamController.cancelTranscription).toHaveBeenCalled()
@@ -445,7 +447,7 @@ describe('itoSessionManager', () => {
     await session.startSession(ItoMode.TRANSCRIBE)
     await session.completeSession()
 
-    expect(mockItoStreamController.endInteraction).toHaveBeenCalled()
+    expect(mockItoStreamController.cancelTranscription).toHaveBeenCalled()
     expect(mockInteractionManager.createInteraction).toHaveBeenCalledWith(
       '',
       Buffer.from('audio-data'),
@@ -516,4 +518,70 @@ describe('itoSessionManager', () => {
     expect(mockTextInserter.insertText).toHaveBeenCalledWith(mockTranscript)
     expect(mockRecordingStateNotifier.notifyRecordingStopped).toHaveBeenCalled()
   })
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(done => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+test('serializes starts through response insertion and coalesces stop requests', async () => {
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  const response = deferred<any>()
+  mockItoStreamController.startGrpcStream.mockReturnValueOnce(response.promise)
+  const first = session.startSession(ItoMode.TRANSCRIBE)
+  expect(await session.startSession(ItoMode.EDIT)).toBeUndefined()
+  await first
+  const stop = session.completeSession()
+  expect(session.completeSession()).toBe(stop)
+  expect(await session.startSession(ItoMode.EDIT)).toBeUndefined()
+  response.resolve({
+    response: { transcript: 'first' },
+    audioBuffer: Buffer.from('first'),
+    sampleRate: 16000,
+  })
+  await stop
+  expect(await session.startSession(ItoMode.EDIT)).toBe('test-interaction-123')
+  await session.cancelSession()
+})
+
+test('cancellation while processing prevents a late transcript from being inserted', async () => {
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  const response = deferred<any>()
+  mockItoStreamController.startGrpcStream.mockReturnValueOnce(response.promise)
+  await session.startSession(ItoMode.TRANSCRIBE)
+  const stopping = session.completeSession()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const insertingBefore = mockTextInserter.insertText.mock.calls.length
+  const cancel = session.cancelSession()
+  response.resolve({
+    response: { transcript: 'cancelled' },
+    audioBuffer: Buffer.from('old'),
+    sampleRate: 16000,
+  })
+  await Promise.all([stopping, cancel])
+  expect(mockTextInserter.insertText.mock.calls.length).toBe(insertingBefore)
+})
+
+test('late context from a cancelled recording cannot update its replacement', async () => {
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  const context = deferred<any>()
+  mockContextGrabber.gatherContext.mockReturnValueOnce(context.promise)
+  await session.startSession(ItoMode.TRANSCRIBE)
+  await session.cancelSession()
+  await session.startSession(ItoMode.TRANSCRIBE)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const updates = mockItoStreamController.scheduleConfigUpdate.mock.calls.length
+  context.resolve({ contextText: 'stale' })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(mockItoStreamController.scheduleConfigUpdate.mock.calls.length).toBe(
+    updates,
+  )
+  await session.cancelSession()
 })

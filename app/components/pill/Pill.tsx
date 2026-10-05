@@ -74,7 +74,7 @@ const Pill = () => {
   const initialOnboardingCompleted = useOnboardingStore(
     state => state.onboardingCompleted,
   )
-  const { startRecording, stopRecording } = useAudioStore()
+  const { startRecording, stopRecording, cancelRecording } = useAudioStore()
 
   const [isRecording, setIsRecording] = useState(false)
   const [isManualRecording, setIsManualRecording] = useState(false)
@@ -255,11 +255,11 @@ const Pill = () => {
   const recordingHeight = 32
   const manualRecordingWidth = 148
   const manualRecordingHeight = 32
-  const processingWidth = 84
+  const processingWidth = 112
   const processingHeight = 32
-  const polishingWidth = 120 // Same width as recording phase
+  const polishingWidth = 148 // Same width as recording phase
   const polishingHeight = 32
-  const editingWidth = 120 // Same width as recording phase
+  const editingWidth = 148 // Same width as recording phase
   const editingHeight = 32
 
   // Determine current state
@@ -330,7 +330,7 @@ const Pill = () => {
 
     // Enable pointer events for this element
     pointerEvents: 'auto',
-    cursor: isHovered && !anyRecording ? 'pointer' : 'default',
+    cursor: isHovered && !anyRecording && !isProcessing ? 'pointer' : 'default',
 
     // The transition property makes the magic happen!
     // We animate width, height, color, opacity, and scale changes over 0.3 seconds.
@@ -356,7 +356,7 @@ const Pill = () => {
 
   // Handle click to start manual recording
   const handleClick = () => {
-    if (isHovered && !anyRecording) {
+    if (isHovered && !anyRecording && !isProcessing) {
       setIsManualRecording(true)
       isManualRecordingRef.current = true
       // Trigger recording start via IPC
@@ -372,7 +372,7 @@ const Pill = () => {
   const handleCancel = (e: React.MouseEvent) => {
     e.stopPropagation()
     setIsManualRecording(false)
-    stopRecording()
+    cancelRecording()
 
     analytics.track(ANALYTICS_EVENTS.MANUAL_RECORDING_ABANDONED, {
       is_recording: false,
@@ -449,23 +449,23 @@ const Pill = () => {
     }
 
     if (isProcessing) {
-      if (isPolishing) {
-        return (
-          <AnimatedStatusText
-            text="Polishing"
-            color={getAudioBarColor(recordingMode)}
+      return (
+        <div className="flex items-center gap-2">
+          {isPolishing || isEditing ? (
+            <AnimatedStatusText
+              text={isPolishing ? 'Polishing' : 'Editing'}
+              color={getAudioBarColor(recordingMode)}
+            />
+          ) : (
+            <LoadingAnimation color={getAudioBarColor(recordingMode)} />
+          )}
+          <TooltipButton
+            onClick={handleCancel}
+            icon={<X width={14} height={14} color="white" />}
+            tooltip="Cancel"
           />
-        )
-      }
-      if (isEditing) {
-        return (
-          <AnimatedStatusText
-            text="Editing"
-            color={getAudioBarColor(recordingMode)}
-          />
-        )
-      }
-      return <LoadingAnimation color={getAudioBarColor(recordingMode)} />
+        </div>
+      )
     }
 
     if (isHovered) {
@@ -489,7 +489,7 @@ const Pill = () => {
             {renderContent()}
           </div>
         </TooltipTrigger>
-        {isHovered && !anyRecording && (
+        {isHovered && !anyRecording && !isProcessing && (
           <TooltipContent
             side="top"
             style={{

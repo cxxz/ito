@@ -23,23 +23,30 @@ import { interactionManager } from './interactions/InteractionManager'
 export class ItoStreamController {
   private audioStreamManager = new AudioStreamManager()
 
+  private streamPending = false
+  private responseDeadline: ReturnType<typeof setTimeout> | null = null
+  private readonly responseTimeoutMs: number
+
+  constructor(responseTimeoutMs = 120_000) {
+    this.responseTimeoutMs = responseTimeoutMs
+  }
+
   private hasStartedGrpc = false
   private currentMode: ItoMode = ItoMode.TRANSCRIBE
-  private isCancelled = false
   private configQueue: TranscribeStreamRequest[] = []
   private abortController: AbortController | null = null
 
   public async initialize(mode: ItoMode): Promise<boolean> {
     // Guard against multiple concurrent transcriptions
-    if (this.audioStreamManager.isCurrentlyStreaming()) {
+    if (this.streamPending || this.audioStreamManager.isCurrentlyStreaming()) {
       log.warn('[ItoStreamController] Stream already in progress.')
       return false
     }
 
+    this.audioStreamManager = new AudioStreamManager()
     this.audioStreamManager.initialize()
     this.hasStartedGrpc = false
     this.currentMode = mode
-    this.isCancelled = false
     this.configQueue = []
     this.abortController = null
     console.log('[ItoStreamController] Starting new interaction stream.')
@@ -66,6 +73,7 @@ export class ItoStreamController {
 
     console.log('[ItoStreamController] Starting gRPC stream immediately')
     this.hasStartedGrpc = true
+    this.streamPending = true
     this.abortController = new AbortController()
     const abortSignal = this.abortController.signal
     const timingEventName =
@@ -73,21 +81,36 @@ export class ItoStreamController {
         ? TimingEventName.SERVER_EDITING
         : TimingEventName.SERVER_DICTATION
 
-    const response = await timingCollector.timeAsync(
-      timingEventName,
-      async () =>
-        await grpcClient.transcribeStream(
-          this.createStreamGenerator(),
-          abortSignal,
-          onPhaseUpdate,
+    const audio = this.audioStreamManager
+    const configs = this.configQueue
+    let onAbort!: () => void
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () =>
+        reject(abortSignal.reason ?? new Error('Transcription cancelled'))
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+    })
+    try {
+      const response = await Promise.race([
+        timingCollector.timeAsync(timingEventName, () =>
+          grpcClient.transcribeStream(
+            this.createStreamGenerator(audio, configs, abortSignal),
+            abortSignal,
+            onPhaseUpdate,
+          ),
         ),
-    )
-
-    // Return response along with the audio data collected during the stream
-    return {
-      response,
-      audioBuffer: this.audioStreamManager.getInteractionAudioBuffer(),
-      sampleRate: this.audioStreamManager.getCurrentSampleRate(),
+        aborted,
+      ])
+      return {
+        response,
+        audioBuffer: audio.getInteractionAudioBuffer(),
+        sampleRate: audio.getCurrentSampleRate(),
+      }
+    } finally {
+      abortSignal.removeEventListener('abort', onAbort)
+      if (this.responseDeadline) clearTimeout(this.responseDeadline)
+      this.responseDeadline = null
+      audio.stopStreaming()
+      this.streamPending = false
     }
   }
 
@@ -180,17 +203,27 @@ export class ItoStreamController {
 
     console.log('[ItoStreamController] Ending interaction stream')
     this.stopStreaming()
+    if (this.streamPending && !this.responseDeadline) {
+      this.responseDeadline = setTimeout(() => {
+        this.abortController?.abort(
+          new Error('Transcription response timed out'),
+        )
+      }, this.responseTimeoutMs)
+      this.responseDeadline.unref?.()
+    }
   }
 
   public cancelTranscription() {
-    if (!this.audioStreamManager.isCurrentlyStreaming()) {
+    if (
+      !this.streamPending &&
+      !this.audioStreamManager.isCurrentlyStreaming()
+    ) {
       log.warn('[ItoStreamController] No active stream to cancel')
       return
     }
 
     console.log('[ItoStreamController] Cancelling transcription')
-    this.isCancelled = true
-    this.abortController?.abort()
+    this.abortController?.abort(new Error('Transcription cancelled'))
 
     this.stopStreaming()
   }
@@ -215,14 +248,18 @@ export class ItoStreamController {
     this.audioStreamManager.clearInteractionAudio()
   }
 
-  private async *createStreamGenerator(): AsyncGenerator<TranscribeStreamRequest> {
+  private async *createStreamGenerator(
+    audio: AudioStreamManager,
+    configs: TranscribeStreamRequest[],
+    signal: AbortSignal,
+  ): AsyncGenerator<TranscribeStreamRequest> {
     console.log(
       '[ItoStreamController] Starting stream generator (audio-first mode)',
     )
 
     // Stream audio chunks and interleave config updates
-    for await (const audioChunk of this.audioStreamManager.streamAudioChunks()) {
-      if (this.isCancelled) {
+    for await (const audioChunk of audio.streamAudioChunks()) {
+      if (signal.aborted) {
         console.log(
           '[ItoStreamController] Stream cancelled, stopping generator',
         )
@@ -230,8 +267,8 @@ export class ItoStreamController {
       }
 
       // Send any pending config updates before this audio chunk
-      while (this.configQueue.length > 0) {
-        const configMessage = this.configQueue.shift()!
+      while (!signal.aborted && configs.length > 0) {
+        const configMessage = configs.shift()!
         console.log('[ItoStreamController] Sending config update from queue')
         yield configMessage
       }
@@ -246,8 +283,8 @@ export class ItoStreamController {
     }
 
     // Send any remaining config messages at the end
-    while (this.configQueue.length > 0) {
-      const configMessage = this.configQueue.shift()!
+    while (!signal.aborted && configs.length > 0) {
+      const configMessage = configs.shift()!
       console.log(
         '[ItoStreamController] Sending final config update from queue',
       )

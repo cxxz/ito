@@ -493,3 +493,13 @@ describe('AudioRecorderService', () => {
     })
   })
 })
+
+test('concurrent drain callers share a timeout and all settle', async () => {
+  const first = audioRecorderService.awaitDrainComplete(20)
+  const second = audioRecorderService.awaitDrainComplete(20)
+  expect(second).toBe(first)
+  await Promise.all([first, second])
+  const next = audioRecorderService.awaitDrainComplete(10)
+  expect(next).not.toBe(first)
+  await next
+})

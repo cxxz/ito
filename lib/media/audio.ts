@@ -19,6 +19,7 @@ class AudioRecorderService extends EventEmitter {
     resolve: (value: string[]) => void
     reject: (reason?: any) => void
   } | null = null
+  #drainWait: Promise<void> | null = null
   #drainPromise: {
     resolve: () => void
     reject: (reason?: any) => void
@@ -236,13 +237,8 @@ class AudioRecorderService extends EventEmitter {
   }
 
   public awaitDrainComplete(timeoutMs: number = 500): Promise<void> {
-    if (this.#drainPromise) {
-      return new Promise((resolve, reject) => {
-        this.once('error', reject)
-        this.#drainPromise = { resolve, reject }
-      })
-    }
-    return new Promise((resolve, reject) => {
+    if (this.#drainWait) return this.#drainWait
+    this.#drainWait = new Promise<void>((resolve, reject) => {
       let settled = false
       const onTimeout = setTimeout(() => {
         if (!settled) {
@@ -267,7 +263,10 @@ class AudioRecorderService extends EventEmitter {
           }
         },
       }
+    }).finally(() => {
+      this.#drainWait = null
     })
+    return this.#drainWait
   }
 
   #sendCommand(command: object): void {
