@@ -8,7 +8,10 @@ import { STORE_KEYS } from '../../lib/constants/store-keys'
 import type { KeyboardShortcutConfig } from '@/lib/main/store'
 import { ItoMode } from '../generated/ito_pb'
 
-import { ITO_MODE_SHORTCUT_DEFAULTS } from '@/lib/constants/keyboard-defaults'
+import {
+  ITO_MODE_SHORTCUT_DEFAULTS,
+  ITO_MODE_TRIGGER_DEFAULTS,
+} from '@/lib/constants/keyboard-defaults'
 import {
   normalizeChord,
   ShortcutResult,
@@ -74,11 +77,13 @@ const getInitialState = () => {
     keyboardShortcuts: storedSettings?.keyboardShortcuts ?? [
       {
         keys: ITO_MODE_SHORTCUT_DEFAULTS[ItoMode.EDIT],
+        triggerType: ITO_MODE_TRIGGER_DEFAULTS[ItoMode.EDIT],
         mode: ItoMode.EDIT,
         id: crypto.randomUUID(),
       },
       {
         keys: ITO_MODE_SHORTCUT_DEFAULTS[ItoMode.TRANSCRIBE],
+        triggerType: ITO_MODE_TRIGGER_DEFAULTS[ItoMode.TRANSCRIBE],
         mode: ItoMode.TRANSCRIBE,
         id: crypto.randomUUID(),
       },
@@ -210,9 +215,13 @@ export const useSettingsStore = create<SettingsState>(set => {
     createKeyboardShortcut: (mode: ItoMode): ShortcutResult => {
       const currentShortcuts = useSettingsStore.getState().keyboardShortcuts
 
+      const existingShortcut = currentShortcuts.find(ks => ks.mode === mode)
       const newShortcut = {
         keys: [],
         mode,
+        triggerType: existingShortcut
+          ? (existingShortcut.triggerType ?? 'hold')
+          : ITO_MODE_TRIGGER_DEFAULTS[mode],
         id: crypto.randomUUID(),
       }
 

@@ -107,6 +107,25 @@ async function key(code: string, type = 'keydown', repeat = false) {
   })
 }
 
+test('additional shortcuts inherit the mode trigger while preserving configurable keys', async () => {
+  await act(async () => {
+    useSettingsStore
+      .getState()
+      .updateShortcutTriggerType('original', 'double-tap')
+    useSettingsStore.getState().createKeyboardShortcut(ItoMode.TRANSCRIBE)
+  })
+  expect(saved.keyboardShortcuts[1].triggerType).toBe('double-tap')
+  expect(saved.keyboardShortcuts[1].keys).toEqual([])
+  expect(saved.keyboardShortcuts[0].keys).toEqual(['fn'])
+})
+
+test('additional legacy hold shortcuts remain hold shortcuts', async () => {
+  await act(async () => {
+    useSettingsStore.getState().createKeyboardShortcut(ItoMode.TRANSCRIBE)
+  })
+  expect(saved.keyboardShortcuts[1].triggerType).toBe('hold')
+})
+
 test('edits and persists a shortcut in a packaged file:// page without native key events', async () => {
   await click('Edit shortcut')
   expect(shortcutsEnabled).toBe(false)

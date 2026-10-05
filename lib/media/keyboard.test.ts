@@ -36,6 +36,7 @@ type TestKeyEvent = {
   key: string
   timestamp: string
   raw_code: number | null
+  monotonic_ms?: number
 }
 
 const emitKeyEvent = (event: TestKeyEvent) => {
@@ -56,16 +57,26 @@ mock.module('node:child_process', () => ({
 }))
 
 const mockMainStore = {
-  get: mock(() => ({
-    isShortcutGloballyEnabled: true,
-    keyboardShortcuts: [
-      {
-        id: 'mock-shortcut-1',
-        keys: ['command', 'space'],
-        mode: ItoMode.TRANSCRIBE,
-      },
-    ],
-  })),
+  get: mock(
+    (): {
+      isShortcutGloballyEnabled: boolean
+      keyboardShortcuts: Array<{
+        id: string
+        keys: string[]
+        mode: ItoMode
+        triggerType?: 'hold' | 'double-tap'
+      }>
+    } => ({
+      isShortcutGloballyEnabled: true,
+      keyboardShortcuts: [
+        {
+          id: 'mock-shortcut-1',
+          keys: ['command', 'space'],
+          mode: ItoMode.TRANSCRIBE,
+        },
+      ],
+    }),
+  ),
 }
 mock.module('../main/store', () => ({
   default: mockMainStore,
@@ -109,13 +120,24 @@ mock.module('./audio', () => ({
 }))
 
 const mockitoSessionManager = {
-  startSession: mock(),
-  completeSession: mock(),
+  startSession: mock(
+    (): Promise<string | undefined> => Promise.resolve('test-interaction-123'),
+  ),
+  completeSession: mock((): Promise<void> => Promise.resolve()),
   setMode: mock(),
   cancelSession: mock(),
 }
 mock.module('../main/itoSessionManager', () => ({
   itoSessionManager: mockitoSessionManager,
+}))
+
+let recordingStopped: () => void = () => {}
+mock.module('../main/recordingStateNotifier', () => ({
+  recordingStateNotifier: {
+    onRecordingStopped: (listener: () => void) => {
+      recordingStopped = listener
+    },
+  },
 }))
 
 const mockTimingCollector = createMockTimingCollector()
@@ -165,8 +187,10 @@ describe('Keyboard Module', () => {
     mockWindow.webContents.send.mockClear()
     mockWindow.webContents.isDestroyed.mockClear()
     mockAudioRecorderService.stopRecording.mockClear()
-    mockitoSessionManager.startSession.mockClear()
-    mockitoSessionManager.completeSession.mockClear()
+    mockitoSessionManager.startSession.mockReset()
+    mockitoSessionManager.startSession.mockResolvedValue('test-interaction-123')
+    mockitoSessionManager.completeSession.mockReset()
+    mockitoSessionManager.completeSession.mockResolvedValue()
     mockitoSessionManager.setMode.mockClear()
     mockitoSessionManager.cancelSession.mockClear()
     Object.values(mockInteractionManager).forEach(mockFn => mockFn.mockClear())
@@ -514,6 +538,7 @@ describe('Keyboard Module', () => {
         Buffer.from(JSON.stringify(spaceUp) + '\n'),
       )
 
+      await clock.tickAsync(0)
       expect(mockitoSessionManager.completeSession).toHaveBeenCalled()
       expect(console.info).toHaveBeenCalledWith(
         'lib Shortcut DEACTIVATED, stopping recording...',
@@ -612,6 +637,7 @@ describe('Keyboard Module', () => {
         Buffer.from(JSON.stringify(otherKey) + '\n'),
       )
 
+      await clock.tickAsync(0)
       expect(mockitoSessionManager.completeSession).toHaveBeenCalled()
       expect(console.info).toHaveBeenCalledWith(
         'Shortcut DEACTIVATED, stopping recording...',
@@ -959,6 +985,7 @@ describe('Keyboard Module', () => {
         Buffer.from(JSON.stringify(spaceUp1) + '\n'),
       )
 
+      await clock.tickAsync(0)
       expect(mockitoSessionManager.completeSession).toHaveBeenCalledTimes(1)
 
       // Clear mocks for second cycle
@@ -1359,6 +1386,308 @@ describe('Keyboard Module', () => {
       expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
       expect(mockitoSessionManager.startSession).toHaveBeenCalledWith(
         ItoMode.TRANSCRIBE,
+      )
+    })
+  })
+
+  describe('Double-tap regressions', () => {
+    let eventTime = 0
+    const controlShortcut = {
+      id: 'double-control',
+      keys: ['control-left'],
+      mode: ItoMode.TRANSCRIBE,
+      triggerType: 'double-tap' as const,
+    }
+
+    function send(type: 'keydown' | 'keyup', key: string, elapsed = 30) {
+      eventTime += elapsed
+      emitKeyEvent({
+        type,
+        key,
+        monotonic_ms: eventTime,
+        timestamp: new Date(eventTime).toISOString(),
+        raw_code: null,
+      })
+    }
+    function tap(key = 'ControlLeft', hold = 40, gap = 70) {
+      send('keydown', key, gap)
+      send('keyup', key, hold)
+    }
+    function doubleTap(key = 'ControlLeft') {
+      tap(key)
+      tap(key)
+    }
+    function interruptTap() {
+      mockChildProcess.stdout.emit(
+        'data',
+        Buffer.from(JSON.stringify({ type: 'shortcut-interrupted' }) + '\n'),
+      )
+    }
+
+    beforeEach(() => {
+      eventTime = 0
+      mockMainStore.get.mockReturnValue({
+        isShortcutGloballyEnabled: true,
+        keyboardShortcuts: [
+          controlShortcut,
+          {
+            id: 'edit',
+            keys: ['control-left', 'fn'],
+            mode: ItoMode.EDIT,
+            triggerType: 'hold',
+          },
+        ],
+      })
+    })
+
+    test('starts and stops once per pair of clean Control taps', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      tap()
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+      doubleTap()
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.completeSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('does not count Control used with other keys as a tap', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      for (const key of ['KeyA', 'KeyB']) {
+        send('keydown', 'ControlLeft')
+        send('keydown', key)
+        send('keyup', key)
+        send('keyup', 'ControlLeft')
+      }
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      doubleTap()
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('typing between taps cancels the first tap', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      tap()
+      tap('KeyA')
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      tap()
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('copy and mouse interruption events invalidate both current and previous taps', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      tap()
+      interruptTap()
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      send('keydown', 'ControlLeft')
+      interruptTap()
+      send('keyup', 'ControlLeft')
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      tap()
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('ignores taps with another key held and ignores repeated keydowns', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      send('keydown', 'KeyA')
+      doubleTap()
+      send('keyup', 'KeyA')
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      send('keydown', 'ControlLeft')
+      send('keydown', 'ControlLeft', 400)
+      send('keyup', 'ControlLeft')
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+    })
+
+    test('rejects long holds and taps captured far apart even when delivered together', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      tap('ControlLeft', 350)
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      tap('ControlLeft', 40, 2000)
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      tap()
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('uses capture timestamps with older native binaries too', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      for (const time of [0, 50, 2000, 2050]) {
+        emitKeyEvent({
+          type: time % 1000 === 0 ? 'keydown' : 'keyup',
+          key: 'ControlLeft',
+          timestamp: new Date(time).toISOString(),
+          raw_code: null,
+        })
+      }
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+    })
+
+    test('honors the configured modifier side and accepts a configurable right Control', async () => {
+      const { startKeyListener, registerAllHotkeys } = await import(
+        './keyboard'
+      )
+      startKeyListener()
+      doubleTap('ControlRight')
+      tap('ControlLeft')
+      tap('ControlRight')
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+      mockMainStore.get.mockReturnValue({
+        isShortcutGloballyEnabled: true,
+        keyboardShortcuts: [{ ...controlShortcut, keys: ['control-right'] }],
+      })
+      registerAllHotkeys()
+      doubleTap('ControlRight')
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('retries on the next gesture when session initialization refuses or throws', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      mockitoSessionManager.startSession.mockResolvedValueOnce(undefined)
+      doubleTap()
+      await clock.tickAsync(0)
+      mockitoSessionManager.startSession.mockRejectedValueOnce(
+        new Error('initialization failed'),
+      )
+      doubleTap()
+      await clock.tickAsync(0)
+      doubleTap()
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(3)
+      expect(mockitoSessionManager.completeSession).not.toHaveBeenCalled()
+    })
+
+    test('unlatches after cancellation, stream failure, or a UI stop', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      doubleTap()
+      await clock.tickAsync(0)
+      recordingStopped()
+      doubleTap()
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(2)
+      expect(mockitoSessionManager.completeSession).not.toHaveBeenCalled()
+    })
+
+    test('defers a stop until pending initialization finishes and prevents overlapping starts', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      let finishStart!: (value: string) => void
+      mockitoSessionManager.startSession.mockReturnValueOnce(
+        new Promise(resolve => {
+          finishStart = resolve
+        }),
+      )
+      startKeyListener()
+      doubleTap()
+      doubleTap()
+      doubleTap()
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+      expect(mockitoSessionManager.completeSession).not.toHaveBeenCalled()
+      finishStart('session')
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.completeSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('restores transcription after a temporary held edit chord', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      startKeyListener()
+      doubleTap()
+      await clock.tickAsync(0)
+      send('keydown', 'ControlLeft')
+      send('keydown', 'Function')
+      expect(mockitoSessionManager.setMode).toHaveBeenLastCalledWith(
+        ItoMode.EDIT,
+      )
+      send('keyup', 'Function')
+      send('keyup', 'ControlLeft')
+      expect(mockitoSessionManager.setMode).toHaveBeenLastCalledWith(
+        ItoMode.TRANSCRIBE,
+      )
+      expect(mockitoSessionManager.completeSession).not.toHaveBeenCalled()
+      doubleTap()
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.completeSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('registers trigger types and clears pending taps when settings change', async () => {
+      const { startKeyListener, registerAllHotkeys } = await import(
+        './keyboard'
+      )
+      startKeyListener()
+      const registration = JSON.parse(
+        mockChildProcess.stdin.write.mock.calls[0][0],
+      )
+      expect(registration.hotkeys[0]).toEqual({
+        keys: ['ControlLeft'],
+        triggerType: 'double-tap',
+      })
+      expect(registration.hotkeys[1].triggerType).toBe('hold')
+      tap()
+      registerAllHotkeys()
+      tap()
+      expect(mockitoSessionManager.startSession).not.toHaveBeenCalled()
+    })
+
+    test('keeps a configurable Windows-style hold chord working', async () => {
+      const { startKeyListener } = await import('./keyboard')
+      mockMainStore.get.mockReturnValue({
+        isShortcutGloballyEnabled: true,
+        keyboardShortcuts: [
+          {
+            id: 'windows',
+            keys: ['option-left', 'space'],
+            triggerType: 'hold',
+            mode: ItoMode.TRANSCRIBE,
+          },
+        ],
+      })
+      startKeyListener()
+      send('keydown', 'Alt')
+      send('keydown', 'Space')
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.startSession).toHaveBeenCalledTimes(1)
+      send('keyup', 'Space')
+      await clock.tickAsync(0)
+      expect(mockitoSessionManager.completeSession).toHaveBeenCalledTimes(1)
+    })
+
+    test('explicitly stopping cancels a scheduled listener restart', async () => {
+      const { startKeyListener, restartKeyListener, stopKeyListener } =
+        await import('./keyboard')
+      startKeyListener()
+      restartKeyListener()
+      stopKeyListener()
+      await clock.tickAsync(1500)
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+    })
+
+    test('an old process closing cannot clear the replacement listener', async () => {
+      const keyboard = await import('./keyboard')
+      keyboard.startKeyListener()
+      const oldClose = mockChildProcess._closeHandler!
+      keyboard.stopKeyListener()
+      const replacement = {
+        ...mockChildProcess,
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+      }
+      mockSpawn.mockReturnValue(replacement)
+      keyboard.startKeyListener()
+      oldClose(0, 'SIGTERM')
+      expect(keyboard.KeyListenerProcess === (replacement as unknown)).toBe(
+        true,
       )
     })
   })

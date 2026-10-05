@@ -12,6 +12,13 @@ import {
  * Helper class to notify UI windows about recording state changes.
  */
 export class RecordingStateNotifier {
+  private readonly recordingStoppedListeners = new Set<() => void>()
+
+  public onRecordingStopped(listener: () => void) {
+    this.recordingStoppedListeners.add(listener)
+    return () => this.recordingStoppedListeners.delete(listener)
+  }
+
   public notifyRecordingStarted(mode: ItoMode) {
     console.log('[RecordingStateNotifier] Notifying recording started:', {
       mode,
@@ -24,6 +31,7 @@ export class RecordingStateNotifier {
 
   public notifyRecordingStopped() {
     console.log('[RecordingStateNotifier] Notifying recording stopped')
+    this.recordingStoppedListeners.forEach(listener => listener())
     this.sendToWindows(IPC_EVENTS.RECORDING_STATE_UPDATE, {
       isRecording: false,
     })
