@@ -11,6 +11,10 @@ services:
     command: bun run start
     container_name: ito-server
     restart: always
+    # Linux Docker doesn't define host.docker.internal by default; map it to the host
+    # so the server can reach host-side services (e.g. vLLM on :8989).
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       db:
         condition: service_started
