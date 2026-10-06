@@ -371,7 +371,14 @@ export default function AdvancedSettingsContent() {
     pendingSaveRef.current = null
 
     try {
-      await window.api.updateAdvancedSettings(pending)
+      // A pill shortcut may have changed settings during the debounce.
+      const { llm, grammarServiceEnabled, macosAccessibilityContextEnabled } =
+        useAdvancedSettingsStore.getState()
+      await window.api.updateAdvancedSettings({
+        llm,
+        grammarServiceEnabled,
+        macosAccessibilityContextEnabled,
+      })
     } catch (error) {
       console.error('Failed to update advanced settings:', error)
     }

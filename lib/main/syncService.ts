@@ -9,7 +9,7 @@ import { Note, Interaction, DictionaryItem } from './sqlite/models'
 import mainStore from './store'
 import { STORE_KEYS } from '../constants/store-keys'
 import type { AdvancedSettings } from './store'
-import { mainWindow } from './app'
+import { broadcastToAllWindows } from '../window/broadcast'
 import { getServerConfig, isServerConfigured } from './serverConfig'
 
 const LAST_SYNCED_AT_KEY = 'lastSyncedAt'
@@ -319,13 +319,7 @@ export class SyncService {
         })
 
         // Notify UI of the update
-        if (
-          mainWindow &&
-          !mainWindow.isDestroyed() &&
-          !mainWindow.webContents.isDestroyed()
-        ) {
-          mainWindow.webContents.send('advanced-settings-updated')
-        }
+        broadcastToAllWindows('advanced-settings-updated')
       }
 
       // Compare timestamps to determine sync direction
@@ -378,13 +372,7 @@ export class SyncService {
         // Update local store
         mainStore.set(STORE_KEYS.ADVANCED_SETTINGS, updatedLocalSettings)
         // Notify UI of the update
-        if (
-          mainWindow &&
-          !mainWindow.isDestroyed() &&
-          !mainWindow.webContents.isDestroyed()
-        ) {
-          mainWindow.webContents.send('advanced-settings-updated')
-        }
+        broadcastToAllWindows('advanced-settings-updated')
       }
       // Note: We don't push local changes to server in this implementation
       // since advanced settings are typically managed through the UI which

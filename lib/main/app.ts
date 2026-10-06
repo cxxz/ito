@@ -81,8 +81,9 @@ export function createAppWindow(): BrowserWindow {
   return mainWindow
 }
 
-const PILL_MAX_WIDTH = 172
-const PILL_MAX_HEIGHT = 84
+// Include the hover menu and its pointer bridge above the pill.
+const PILL_MAX_WIDTH = 224
+const PILL_MAX_HEIGHT = 128
 export function createPillWindow(): void {
   pillWindow = new BrowserWindow({
     width: PILL_MAX_WIDTH,

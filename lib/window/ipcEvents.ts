@@ -52,6 +52,7 @@ import {
   updateServerSettings,
 } from '../main/serverSettings'
 import type { ServerConnectionInput } from '../types/serverConnection'
+import { broadcastToAllWindows } from './broadcast'
 
 const handleIPC = (channel: string, handler: (...args: any[]) => any) => {
   ipcMain.handle(channel, handler)
@@ -78,6 +79,12 @@ export function registerIPC() {
       'settings.historyRetentionDays',
     )
     store.set(key, val)
+    if (
+      key === STORE_KEYS.ADVANCED_SETTINGS ||
+      key.startsWith(`${STORE_KEYS.ADVANCED_SETTINGS}.`)
+    ) {
+      broadcastToAllWindows('advanced-settings-updated')
+    }
     if (key === 'settings.isShortcutGloballyEnabled') {
       registerAllHotkeys()
     }

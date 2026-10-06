@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useAdvancedSettingsStore } from '../../store/useAdvancedSettingsStore'
 import {
   useOnboardingStore,
   ONBOARDING_CATEGORIES,
 } from '../../store/useOnboardingStore'
-import { Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip'
 import { X, StopSquare } from '@mynaui/icons-react'
 import { AudioBars } from './contents/AudioBars'
 import { PreviewAudioBars } from './contents/PreviewAudioBars'
@@ -13,6 +13,7 @@ import { RecordingTimer } from './contents/RecordingTimer'
 import { AnimatedStatusText } from './contents/AnimatedStatusText'
 import { useAudioStore } from '@/app/store/useAudioStore'
 import { TooltipButton } from './contents/TooltipButton'
+import { PillHoverMenu } from './contents/PillHoverMenu'
 import { analytics, ANALYTICS_EVENTS } from '../analytics'
 import type {
   RecordingStatePayload,
@@ -21,9 +22,11 @@ import type {
   EditingStatePayload,
 } from '@/lib/types/ipc'
 import { ItoMode } from '@/app/generated/ito_pb'
+import { STORE_KEYS } from '@/lib/constants/store-keys'
 
 const globalStyles = `
   html, body, #app {
+    width: 100%;
     height: 100%;
     margin: 0;
     overflow: hidden; /* Prevent scrollbars */
@@ -51,6 +54,18 @@ const globalStyles = `
 
 const BAR_UPDATE_INTERVAL = 64
 
+const readSelectedMicrophoneName = (): string => {
+  // The native recorder uses device names as IDs on both macOS and Windows.
+  const deviceId = window.electron.store.get(
+    STORE_KEYS.SETTINGS,
+  )?.microphoneDeviceId
+  return typeof deviceId === 'string' &&
+    deviceId !== '' &&
+    deviceId.toLowerCase() !== 'default'
+    ? deviceId
+    : 'System default'
+}
+
 // Color mapping for different recording modes
 const getAudioBarColor = (mode: ItoMode | undefined): string => {
   switch (mode) {
@@ -75,6 +90,15 @@ const Pill = () => {
     state => state.onboardingCompleted,
   )
   const { startRecording, stopRecording, cancelRecording } = useAudioStore()
+  const polishEnabled = useAdvancedSettingsStore(
+    state => state.llm.polishEnabled ?? state.defaults?.polishEnabled ?? false,
+  )
+  const setPolishEnabled = useAdvancedSettingsStore(
+    state => state.setPolishEnabled,
+  )
+  const [microphoneName, setMicrophoneName] = useState(
+    readSelectedMicrophoneName,
+  )
 
   const [isRecording, setIsRecording] = useState(false)
   const [isManualRecording, setIsManualRecording] = useState(false)
@@ -178,6 +202,7 @@ const Pill = () => {
     const unsubSettings = window.api.on('settings-update', (settings: any) => {
       // Update local state with the new setting
       setShowItoBarAlways(settings.showItoBarAlways)
+      setMicrophoneName(readSelectedMicrophoneName())
     })
 
     // Listen for onboarding updates from the main process
@@ -340,6 +365,8 @@ const Pill = () => {
 
   // Handle mouse enter - enable mouse events for the pill window and set hover state
   const handleMouseEnter = () => {
+    // Also catch selections made via the native tray menu while closed.
+    setMicrophoneName(readSelectedMicrophoneName())
     setIsHovered(true)
     if (window.api?.setPillMouseEvents) {
       window.api.setPillMouseEvents(false) // Enable mouse events
@@ -366,6 +393,12 @@ const Pill = () => {
         is_recording: true,
       })
     }
+  }
+
+  const handleTogglePolish = () => {
+    void setPolishEnabled(!polishEnabled).catch(error => {
+      console.error('Failed to sync transcription polishing setting:', error)
+    })
   }
 
   // Handle cancel recording
@@ -450,7 +483,15 @@ const Pill = () => {
 
     if (isProcessing) {
       return (
-        <div className="flex items-center gap-2">
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            flexWrap: 'nowrap',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
           {isPolishing || isEditing ? (
             <AnimatedStatusText
               text={isPolishing ? 'Polishing' : 'Editing'}
@@ -478,34 +519,22 @@ const Pill = () => {
   return (
     <>
       <style>{globalStyles}</style>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            style={pillStyle}
-            onClick={handleClick}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-          >
-            {renderContent()}
-          </div>
-        </TooltipTrigger>
+      <div
+        style={{ position: 'relative', pointerEvents: 'none' }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
         {isHovered && !anyRecording && !isProcessing && (
-          <TooltipContent
-            side="top"
-            style={{
-              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-              color: 'white',
-              padding: '6px 8px',
-              fontSize: '14px',
-              marginBottom: '6px',
-              borderRadius: '8px',
-            }}
-            className="border-none rounded-md"
-          >
-            Click and start speaking
-          </TooltipContent>
+          <PillHoverMenu
+            microphoneName={microphoneName}
+            polishEnabled={polishEnabled}
+            onTogglePolish={handleTogglePolish}
+          />
         )}
-      </Tooltip>
+        <div style={pillStyle} onClick={handleClick}>
+          {renderContent()}
+        </div>
+      </div>
     </>
   )
 }

@@ -27,6 +27,7 @@ interface AdvancedSettingsState {
   asrProviderDefaultModels?: Record<string, string>
   macosAccessibilityContextEnabled: boolean
   setLlmSettings: (settings: Partial<LlmSettings>) => void
+  setPolishEnabled: (enabled: boolean) => Promise<void>
   setGrammarServiceEnabled: (enabled: boolean) => void
   setMacosAccessibilityContextEnabled: (enabled: boolean) => void
 }
@@ -84,6 +85,20 @@ export const useAdvancedSettingsStore = create<AdvancedSettingsState>(set => {
         const partialState = { llm: newLlmSettings }
         syncToStore(partialState)
         return partialState
+      })
+    },
+    setPolishEnabled: async (enabled: boolean) => {
+      // Match Advanced Settings: save locally first, then sync to the server.
+      window.electron.store.set('advancedSettingsDirty', true)
+      useAdvancedSettingsStore.getState().setLlmSettings({
+        polishEnabled: enabled,
+      })
+      const { llm, grammarServiceEnabled, macosAccessibilityContextEnabled } =
+        useAdvancedSettingsStore.getState()
+      await window.api.updateAdvancedSettings({
+        llm,
+        grammarServiceEnabled,
+        macosAccessibilityContextEnabled,
       })
     },
     setGrammarServiceEnabled: (enabled: boolean) => {
