@@ -14,6 +14,7 @@ enigo = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 selection = "1.2.0"
+windows = { version = "0.56", features = ["Win32_System_Com", "Win32_UI_Accessibility"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 accessibility-ng = "0.1.6"
@@ -21,6 +22,8 @@ accessibility-sys-ng = "0.1"
 active-win-pos-rs = "0.8"
 core-foundation = "0.9"
 libc = "0.2"
+cocoa = "0.25"
+objc = "0.2"
 
 [build-dependencies]
 tauri-winres = "0.3.5"

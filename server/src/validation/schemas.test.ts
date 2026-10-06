@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test'
+import { describe, it, test, expect } from 'bun:test'
 import {
   AsrModelSchema,
   VocabularySchema,
@@ -7,7 +7,9 @@ import {
 
 describe('AsrModelSchema', () => {
   it('should accept valid ASR model names', () => {
-    expect(AsrModelSchema.parse('whisper-large-v3-turbo')).toBe('whisper-large-v3-turbo')
+    expect(AsrModelSchema.parse('whisper-large-v3-turbo')).toBe(
+      'whisper-large-v3-turbo',
+    )
     expect(AsrModelSchema.parse('distil-whisper-large-v3-turbo-en')).toBe(
       'distil-whisper-large-v3-turbo-en',
     )
@@ -131,4 +133,11 @@ describe('VocabularySchema', () => {
     )
     expect(result).toEqual(['valid1', 'valid2'])
   })
+})
+
+test('vocabulary accepts Unicode names and rejects markup and controls', () => {
+  for (const word of ['café', 'cafe\u0301', '東京', 'مرحبا', 'O’Connor'])
+    expect(VocabularyWordSchema.safeParse(word).success).toBe(true)
+  for (const word of ['<script>', 'bad\u0000word', 'line\nword'])
+    expect(VocabularyWordSchema.safeParse(word).success).toBe(false)
 })

@@ -266,7 +266,7 @@ export default function HomeContent() {
     return {
       text: transcript,
       isError: false,
-      tooltip: null,
+      tooltip: interaction.asr_output?.insertionError || null,
     }
   }
 

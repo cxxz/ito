@@ -6,6 +6,7 @@ export const IPC_EVENTS = {
   PROCESSING_STATE_UPDATE: 'processing-state-update',
   POLISH_STATE_UPDATE: 'polish-state-update',
   EDITING_STATE_UPDATE: 'editing-state-update',
+  TRANSCRIPTION_ERROR: 'transcription-error',
   VOLUME_UPDATE: 'volume-update',
   FORCE_DEVICE_LIST_RELOAD: 'force-device-list-reload',
   SETTINGS_UPDATE: 'settings-update',
@@ -43,3 +44,7 @@ export type IpcResult<T> =
   | { success: false; error: string; errorType?: string }
 
 export type IpcResponse<T> = Promise<IpcResult<T>>
+
+export interface TranscriptionErrorPayload {
+  message: string
+}

@@ -9,6 +9,9 @@ use enigo::{Enigo, Key, Keyboard, Settings};
 #[cfg(target_os = "macos")]
 mod keyboard_layout;
 #[cfg(target_os = "macos")]
+#[path = "../../shared/macos_clipboard.rs"]
+mod macos_clipboard;
+#[cfg(target_os = "macos")]
 mod macos_writer;
 #[cfg(target_os = "macos")]
 use macos_writer::type_text_macos;

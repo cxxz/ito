@@ -7,6 +7,7 @@ import { EventEmitter } from 'events'
 interface SelectedTextOptions {
   format?: 'json' | 'text' // Output format
   maxLength?: number // Maximum length of text to return
+  allowClipboard?: boolean // Only explicit editing may fall back to simulated copy.
 }
 
 interface SelectedTextResult {
@@ -20,6 +21,7 @@ interface SelectedTextCommand {
   command: 'get-text'
   format?: 'json' | 'text'
   maxLength?: number
+  allowClipboard?: boolean
   requestId: string
 }
 
@@ -163,6 +165,7 @@ class SelectedTextReaderService extends EventEmitter {
         command: 'get-text',
         format: options.format || 'json',
         maxLength: options.maxLength || MAXIUMUM_TEXT_LENGTH_DEFAULT,
+        allowClipboard: options.allowClipboard ?? true,
         requestId,
       }
 
@@ -313,11 +316,13 @@ export function getSelectedText(
  */
 export async function getSelectedTextString(
   maxLength: number = MAXIUMUM_TEXT_LENGTH_DEFAULT,
+  allowClipboard = true,
 ): Promise<string | null> {
   try {
     const result = await selectedTextReaderService.getSelectedText({
       format: 'json',
       maxLength,
+      allowClipboard,
     })
     return result.success ? result.text : null
   } catch (error) {

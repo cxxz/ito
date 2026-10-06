@@ -263,3 +263,30 @@ test('reopening the popup refreshes microphone changes made through the tray', a
   )
   expect(messages).toEqual([])
 })
+
+test('a failed insertion stays visible, can be dismissed and never starts recording on dismissal', async () => {
+  await emit('settings-update', { showItoBarAlways: false })
+  const message =
+    'Text could not be inserted. Your transcript is saved in Recent activity.'
+  await emit('transcription-error', { message })
+  expect(container.querySelector('[role="alert"]')?.getAttribute('title')).toBe(
+    message,
+  )
+  expect(pill().style.visibility).toBe('visible')
+  await hover()
+  await act(async () =>
+    (
+      container.querySelector(
+        '[aria-label="Dismiss dictation error"]',
+      ) as HTMLButtonElement
+    ).click(),
+  )
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+  expect(messages).toEqual([])
+})
+test('the next successful recording clears the previous error', async () => {
+  await emit('transcription-error', { message: 'Failed' })
+  await emit('recording-state-update', { isRecording: true })
+  await emit('recording-state-update', { isRecording: false })
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+})

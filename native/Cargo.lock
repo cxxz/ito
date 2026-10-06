@@ -2060,16 +2060,19 @@ dependencies = [
  "accessibility-sys-ng",
  "active-win-pos-rs 0.8.4",
  "arboard",
+ "cocoa 0.25.0",
  "core-foundation 0.9.4",
  "crossbeam-channel",
  "enigo 0.6.1",
  "libc",
  "lru",
+ "objc",
  "parking_lot",
  "selection",
  "serde",
  "serde_json",
  "tauri-winres",
+ "windows 0.56.0",
 ]
 
 [[package]]
@@ -2228,6 +2231,7 @@ dependencies = [
  "core-foundation 0.9.4",
  "core-graphics 0.23.2",
  "enigo 0.3.0",
+ "objc",
  "tauri-winres",
 ]
 

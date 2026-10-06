@@ -35,12 +35,17 @@ export function setFocusedText(
     // Add the text as the final argument with -- separator to prevent flag parsing
     args.push('--', text)
 
-    execFile(binaryPath, args, (err, _stdout, stderr) => {
-      if (err) {
-        console.error('text-writer error:', stderr)
-        return resolve(false)
-      }
-      resolve(true)
-    })
+    execFile(
+      binaryPath,
+      args,
+      { timeout: 5000, maxBuffer: 65536 },
+      (err, _stdout, stderr) => {
+        if (err) {
+          console.error('text-writer error:', stderr)
+          return resolve(false)
+        }
+        resolve(true)
+      },
+    )
   })
 }

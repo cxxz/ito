@@ -159,6 +159,7 @@ export class InteractionManager {
     durationMs?: number
     mode: ItoMode
     serverInteraction?: InteractionPb
+    insertionError?: string
   }) {
     const interactionId = params.interactionId ?? this.currentInteractionId
     if (!interactionId) {
@@ -196,6 +197,9 @@ export class InteractionManager {
               : params.responseTranscript || 'Voice interaction',
           asr_output: {
             transcript: params.responseTranscript,
+            ...(params.insertionError
+              ? { insertionError: params.insertionError }
+              : {}),
             totalAudioBytes: params.audioBuffer.length,
             error: null,
             errorCode: null,
@@ -266,6 +270,9 @@ export class InteractionManager {
         title,
         asr_output: {
           ...parsedAsrOutput,
+          ...(params.insertionError
+            ? { insertionError: params.insertionError }
+            : {}),
           totalAudioBytes:
             parsedAsrOutput?.totalAudioBytes ?? params.audioBuffer.length,
         },

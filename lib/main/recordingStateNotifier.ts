@@ -6,6 +6,7 @@ import {
   ProcessingStatePayload,
   PolishStatePayload,
   EditingStatePayload,
+  TranscriptionErrorPayload,
 } from '../types/ipc'
 
 /**
@@ -79,13 +80,18 @@ export class RecordingStateNotifier {
     })
   }
 
+  public notifyTranscriptionError(message: string) {
+    this.sendToWindows(IPC_EVENTS.TRANSCRIPTION_ERROR, { message })
+  }
+
   private sendToWindows(
     event: string,
     payload:
       | RecordingStatePayload
       | ProcessingStatePayload
       | PolishStatePayload
-      | EditingStatePayload,
+      | EditingStatePayload
+      | TranscriptionErrorPayload,
   ) {
     // Send to pill window
     getPillWindow()?.webContents.send(event, payload)

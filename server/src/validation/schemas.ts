@@ -55,7 +55,7 @@ export const VocabularyWordSchema = z
   .trim()
   .min(1)
   .max(100)
-  .regex(/^[a-zA-Z0-9\-_.\s']+$/, 'Invalid vocabulary word characters')
+  .regex(/^[\p{L}\p{M}\p{N}._'’ -]+$/u, 'Invalid vocabulary word characters')
 
 // Vocabulary list schema
 export const VocabularySchema = z

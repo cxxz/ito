@@ -35,29 +35,57 @@ extern "C" {
     fn CFRelease(cf: *const c_void);
 }
 
-pub fn get_selected_text() -> Result<String, Box<dyn std::error::Error>> {
+pub fn get_selected_text(allow_clipboard: bool) -> Result<String, Box<dyn std::error::Error>> {
+    use accessibility_ng::{AXAttribute, AXUIElement};
+    let selected = (|| {
+        let system = AXUIElement::system_wide();
+        system.set_messaging_timeout(0.5)?;
+        let focused = system.attribute(&AXAttribute::focused_uielement())?;
+        focused.set_messaging_timeout(0.5)?;
+        focused
+            .attribute(&AXAttribute::selected_text())
+            .map(|text| text.to_string())
+    })();
+    match selected {
+        Ok(text) => return Ok(text),
+        Err(error) if !allow_clipboard => return Err(error.into()),
+        Err(_) => {}
+    }
     // Simple approach: use Cmd+C (copy) to get any selected text
     let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
 
-    // Store original clipboard contents
-    let original_clipboard = clipboard.get_text().unwrap_or_default();
+    use cocoa::appkit::NSPasteboard;
+    use cocoa::base::nil;
+    use cocoa::foundation::NSAutoreleasePool;
+    let _pool = unsafe { NSAutoreleasePool::new(nil) };
+    let board = unsafe { NSPasteboard::generalPasteboard(nil) };
+    let snapshot = unsafe { crate::macos_clipboard::ClipboardSnapshot::capture(board)? };
 
+    if unsafe { board.changeCount() } != snapshot.change_count {
+        return Err("Clipboard changed before selection copy".into());
+    }
     clipboard
         .clear()
         .map_err(|e| format!("Clipboard clear failed: {}", e))?;
 
     // Use Cmd+C to cut any selected text
-    native_cmd_c()?;
+    let cleared = unsafe { board.changeCount() };
+    if let Err(error) = native_cmd_c() {
+        unsafe {
+            snapshot.restore_if_owned(board, cleared)?;
+        }
+        return Err(error);
+    }
 
     // Small delay for copy operation to complete
     thread::sleep(Duration::from_millis(25));
 
     // Get the copied text from clipboard (this is what was selected)
+    let copied = unsafe { board.changeCount() };
     let selected_text = clipboard.get_text().unwrap_or_default();
-
-    // Always restore original clipboard contents - ITO is cutting on behalf of user
-    // for context
-    let _ = clipboard.set_text(original_clipboard);
+    unsafe {
+        snapshot.restore_if_owned(board, copied)?;
+    }
 
     Ok(selected_text)
 }

@@ -315,6 +315,9 @@ export class ItoSessionManager {
 
     // Handle any transcription error
     if (response.error) {
+      recordingStateNotifier.notifyTranscriptionError(
+        errorMessage || 'Transcription failed',
+      )
       await interactionManager.createInteraction(
         response.transcript || '',
         audioBuffer,
@@ -335,7 +338,12 @@ export class ItoSessionManager {
           textToInsert = session.grammar.addLeadingSpaceIfNeeded(textToInsert)
         }
 
-        await this.textInserter.insertText(textToInsert)
+        const inserted = await this.textInserter.insertText(textToInsert)
+        const insertionError = inserted
+          ? undefined
+          : 'Text could not be inserted. Your transcript is saved in Recent activity.'
+        if (insertionError)
+          recordingStateNotifier.notifyTranscriptionError(insertionError)
 
         // Create interaction in database
         // Capture everything before releasing the session. Background history
@@ -351,6 +359,7 @@ export class ItoSessionManager {
             ),
             mode: session.mode,
             serverInteraction: response.interaction,
+            ...(insertionError ? { insertionError } : {}),
           })
           .catch(error =>
             console.error(
@@ -377,6 +386,7 @@ export class ItoSessionManager {
       error,
     )
     const errorDetails = this.getErrorDetails(error)
+    recordingStateNotifier.notifyTranscriptionError(errorDetails.message)
     const audioBuffer = itoStreamController.getInteractionAudioBuffer()
     const sampleRate = itoStreamController.getCurrentSampleRate()
 

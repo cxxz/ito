@@ -25,6 +25,7 @@ mock.module('./voiceInputService', () => ({
 }))
 
 const mockRecordingStateNotifier = {
+  notifyTranscriptionError: mock(),
   notifyRecordingStarted: mock(),
   notifyRecordingStopped: mock(),
   notifyProcessingStarted: mock(),
@@ -649,6 +650,31 @@ test('recorder failure cleans up the session and allows another recording', asyn
   await session.startSession(ItoMode.TRANSCRIBE)
   recorderFailure!(new Error('Device disconnected'))
   await session.completeSession()
+  expect(await session.startSession(ItoMode.TRANSCRIBE)).toBe(
+    'test-interaction-123',
+  )
+  await session.cancelSession()
+})
+
+test('failed insertion warns the user, saves the transcript and releases the session', async () => {
+  mockTextInserter.insertText.mockResolvedValueOnce(false)
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  await session.startSession(ItoMode.TRANSCRIBE)
+  await session.completeSession()
+  expect(
+    mockRecordingStateNotifier.notifyTranscriptionError,
+  ).toHaveBeenCalledWith(
+    'Text could not be inserted. Your transcript is saved in Recent activity.',
+  )
+  expect(
+    (mockInteractionManager.upsertInteractionFromServer.mock.calls as any[]).at(
+      -1,
+    )[0],
+  ).toMatchObject({
+    responseTranscript: 'test transcript',
+    insertionError: expect.any(String),
+  })
   expect(await session.startSession(ItoMode.TRANSCRIBE)).toBe(
     'test-interaction-123',
   )

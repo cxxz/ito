@@ -7,6 +7,9 @@ use std::time::Duration;
 // Platform-specific modules
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+#[path = "../../shared/macos_clipboard.rs"]
+mod macos_clipboard;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -18,6 +21,8 @@ enum Command {
         format: Option<String>,
         #[serde(rename = "maxLength")]
         max_length: Option<usize>,
+        #[serde(rename = "allowClipboard")]
+        allow_clipboard: Option<bool>,
         #[serde(rename = "requestId")]
         request_id: String,
     },
@@ -95,8 +100,9 @@ impl CommandProcessor {
                 Command::GetText {
                     format: _,
                     max_length,
+                    allow_clipboard,
                     request_id,
-                } => self.handle_get_text(max_length, request_id),
+                } => self.handle_get_text(max_length, allow_clipboard.unwrap_or(true), request_id),
                 Command::GetCursorContext {
                     context_length,
                     cut_current_selection,
@@ -110,10 +116,15 @@ impl CommandProcessor {
         }
     }
 
-    fn handle_get_text(&mut self, max_length: Option<usize>, request_id: String) {
+    fn handle_get_text(
+        &mut self,
+        max_length: Option<usize>,
+        allow_clipboard: bool,
+        request_id: String,
+    ) {
         let max_len = max_length.unwrap_or(10000);
 
-        let response = match get_selected_text() {
+        let response = match get_selected_text(allow_clipboard) {
             Ok(selected_text) => {
                 let text = if selected_text.is_empty() {
                     None
@@ -210,13 +221,13 @@ impl CommandProcessor {
 
 // Platform-specific implementations
 #[cfg(target_os = "macos")]
-fn get_selected_text() -> Result<String, Box<dyn std::error::Error>> {
-    macos::get_selected_text()
+fn get_selected_text(allow_clipboard: bool) -> Result<String, Box<dyn std::error::Error>> {
+    macos::get_selected_text(allow_clipboard)
 }
 
 #[cfg(target_os = "windows")]
-fn get_selected_text() -> Result<String, Box<dyn std::error::Error>> {
-    windows::get_selected_text()
+fn get_selected_text(allow_clipboard: bool) -> Result<String, Box<dyn std::error::Error>> {
+    windows::get_selected_text(allow_clipboard)
 }
 
 fn get_cursor_context(context_length: usize) -> Result<String, Box<dyn std::error::Error>> {

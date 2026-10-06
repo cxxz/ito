@@ -11,9 +11,44 @@ pub fn count_editor_chars(text: &str) -> usize {
     text.replace("\r\n", "\n").chars().count()
 }
 
-pub fn get_selected_text() -> Result<String, Box<dyn std::error::Error>> {
-    let selected_text = get_text();
-    Ok(selected_text)
+pub fn get_selected_text(allow_clipboard: bool) -> Result<String, Box<dyn std::error::Error>> {
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitialize, CoUninitialize, CLSCTX_ALL};
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationTextPattern, UIA_TextPatternId,
+    };
+    struct ComGuard(bool);
+    impl Drop for ComGuard {
+        fn drop(&mut self) {
+            if self.0 {
+                unsafe {
+                    CoUninitialize();
+                }
+            }
+        }
+    }
+    let selected = unsafe {
+        let _com = ComGuard(CoInitialize(None).is_ok());
+        (|| -> windows::core::Result<String> {
+            let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)?;
+            let focused = automation.GetFocusedElement()?;
+            let pattern: IUIAutomationTextPattern =
+                focused.GetCurrentPatternAs(UIA_TextPatternId)?;
+            let ranges = pattern.GetSelection()?;
+            let mut text = String::new();
+            for i in 0..ranges.Length()?.min(100) {
+                text.push_str(&ranges.GetElement(i)?.GetText(5000)?.to_string());
+                if text.len() > 20000 {
+                    break;
+                }
+            }
+            Ok(text)
+        })()
+    };
+    match selected {
+        Ok(text) => Ok(text),
+        Err(_) if allow_clipboard => Ok(get_text()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub fn copy_selected_text() -> Result<(), Box<dyn std::error::Error>> {

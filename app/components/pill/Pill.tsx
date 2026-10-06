@@ -102,6 +102,7 @@ const Pill = () => {
 
   const [isRecording, setIsRecording] = useState(false)
   const [isManualRecording, setIsManualRecording] = useState(false)
+  const [lastError, setLastError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isPolishing, setIsPolishing] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -133,6 +134,7 @@ const Pill = () => {
       (state: RecordingStatePayload) => {
         // Update recording state - this is for global hotkey triggered recording
         setIsRecording(state.isRecording)
+        if (state.isRecording) setLastError('')
         setRecordingMode(state.mode ?? recordingMode)
 
         // Only track general recording analytics if it's not a manual recording
@@ -155,6 +157,11 @@ const Pill = () => {
           setVolumeHistory([])
         }
       },
+    )
+
+    const unsubError = window.api.on(
+      'transcription-error',
+      (error: { message: string }) => setLastError(error.message),
     )
 
     // Listen for processing state changes from the main process
@@ -236,6 +243,7 @@ const Pill = () => {
     // Cleanup listeners when the component unmounts
     return () => {
       unsubRecording()
+      unsubError()
       unsubProcessing()
       unsubPolish()
       unsubEditing()
@@ -292,6 +300,7 @@ const Pill = () => {
   const shouldShow =
     anyRecording ||
     isProcessing ||
+    !!lastError ||
     ((onboardingCategory === ONBOARDING_CATEGORIES.TRY_IT ||
       onboardingCompleted) &&
       (showItoBarAlways || isHovered))
@@ -322,6 +331,10 @@ const Pill = () => {
       currentHeight = processingHeight
     }
     backgroundColor = '#000000'
+  } else if (lastError) {
+    currentWidth = 192
+    currentHeight = 32
+    backgroundColor = '#7f1d1d'
   } else if (isHovered) {
     currentWidth = hoveredWidth
     currentHeight = hoveredHeight
@@ -383,7 +396,7 @@ const Pill = () => {
 
   // Handle click to start manual recording
   const handleClick = () => {
-    if (isHovered && !anyRecording && !isProcessing) {
+    if (isHovered && !anyRecording && !isProcessing && !lastError) {
       setIsManualRecording(true)
       isManualRecordingRef.current = true
       // Trigger recording start via IPC
@@ -505,6 +518,41 @@ const Pill = () => {
             icon={<X width={14} height={14} color="white" />}
             tooltip="Cancel"
           />
+        </div>
+      )
+    }
+
+    if (lastError) {
+      return (
+        <div
+          role="alert"
+          title={lastError}
+          aria-label={lastError}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            color: 'white',
+            fontSize: 12,
+          }}
+        >
+          <span>Dictation failed</span>
+          <button
+            aria-label="Dismiss dictation error"
+            onClick={e => {
+              e.stopPropagation()
+              setLastError('')
+            }}
+            style={{
+              background: 'none',
+              border: 0,
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+            }}
+          >
+            <X width={14} height={14} />
+          </button>
         </div>
       )
     }
