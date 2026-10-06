@@ -1,40 +1,149 @@
-# Repository Guidelines
+# Claude Context for ITO Project
 
-## Project Structure & Module Organization
+## Project Overview
 
-- `app/` hosts the Electron renderer (React + Tailwind); `lib/` contains shared TypeScript modules, preload logic, and unit tests.
-- `server/` holds the Bun-based transcription API, database migrations, and infrastructure scripts.
-- `native/` includes Rust crates for keyboard, audio, and text bridges; rebuild via scripts as needed.
-- `resources/` provides packaging assets (icons, updater configs), while `build/` and `out/` house generated installers; avoid editing build outputs.
-- Use `scripts/` for automation and keep generated proto/constants under `lib/generated` (created by build steps).
+This is the ITO project - an AI assistant application with both client and server components.
 
-## Build, Test, and Development Commands
+## Project Structure
 
-- Always prefer `bun` for package management (e.g., `bun install`, `bun run dev`, `bun run build`).
-- `bun install` aligns dependencies after pulls.
-- `bun run dev` starts the Electron shell with live reload; `bun run dev:rust` rebuilds native bridges via `./build-binaries.sh` before launching.
-- Packaging: `bun run build:app` for cross-platform; use `bun run build:mac` / `bun run build:win` for platform installers.
-- Backend (`server/`): `bun install`, `bun run local-db-up` (Postgres), `bun run db:migrate`, `bun run dev`.
+- `app/` - Renderer process code (React UI components, stores, styles)
+- `lib/` - Shared library code (main process, preload scripts, utilities)
+- `native/` - Native binaries (Rust modules and Swift modules for macOS)
+- `server/` - Server-side code with gRPC services
+- `server/src/ito.proto` - Protocol buffer definitions
+- `server/src/clients/` - LLM/ASR client implementations (Groq, Cerebras, OpenAI, Aliyun)
+- `scripts/` - Build and utility scripts
 
-## Coding Style & Naming Conventions
+## Branch
 
-- TypeScript + React across app/lib; server targets modern ECMAScript on Bun.
-- Prettier (2-space indent) and ESLint enforce formatting. Run `bun run format` and `bun run lint` (or `*:app` variants) before submitting.
-- Components/classes use `PascalCase`, hooks/utilities `camelCase`, constants `SCREAMING_SNAKE_CASE`. Co-locate Tailwind styles with components and reuse tokens via `lib/constants`.
+Main development branch: `dev`
+
+## Development Commands
+
+- Dev: `bun dev` (starts electron-vite dev with watch)
+- Server (run from `server/`):
+  - Local dev: `bun install` → `bun local-db-up` (starts Postgres) → `bun db:migrate` → `bun dev` (tsx watch with hot reload)
+  - Full stack via Docker: `bun docker` (equivalent to `docker compose up --build`)
+- Build: `bun build:mac` or `bun build:win`
+- Test: `bun runAllTests` (runs lib, server, app, and native tests)
+  - Lib tests: `bun runLibTests`
+  - Server tests: `bun runServerTests`
+  - App tests: `bun runAppTests`
+  - Native tests: `bun runNativeTests` (or see "Native Binary Tests" section)
+- Lint:
+  - TypeScript: `bun lint` (check) or `bun lint:fix` (fix)
+  - Rust: `bun lint:native` (check) or `bun lint:fix:native` (fix)
+- Type check: `bun type-check`
+- Format:
+  - TypeScript: `bun format` (check) or `bun format:fix` (fix)
+  - Rust: `bun format:native` (check) or `bun format:fix:native` (fix)
+
+## Native Binary Tests
+
+The `native/` directory contains native binaries that power the app's core functionality:
+- **Rust modules**: Organized as a Cargo workspace, allowing you to test and build all modules with a single command
+- **Swift modules**: macOS-only modules for accessibility features (`cursor-context`, `macos-text`)
+
+### Running Tests
+
+Test all native modules:
+
+```bash
+cd native
+cargo test --workspace
+```
+
+Or use the npm script:
+
+```bash
+bun runNativeTests
+```
+
+Test a single module:
+
+```bash
+cd native/global-key-listener
+cargo test
+```
+
+### Native Modules
+
+**Rust modules (cross-platform):**
+- `global-key-listener` - Keyboard event capture and hotkey management
+- `audio-recorder` - Audio recording with sample rate conversion
+- `text-writer` - Cross-platform text input simulation
+- `active-application` - Active window detection
+- `selected-text-reader` - Selected text extraction
+
+**Swift modules (macOS-only):**
+- `cursor-context` - Cursor position and context extraction
+- `macos-text` - macOS text accessibility utilities
+
+### Linting and Formatting
+
+Rust code follows standard formatting and linting rules defined in `native/`:
+
+- **rustfmt.toml** - Code formatting configuration (100 char width, Unix line endings)
+- **clippy.toml** - Linter configuration (cognitive complexity threshold)
+- **Cargo.toml** - Workspace-level lint rules (all warnings, dbg_macro denied, todo warned)
+
+Run checks locally:
+
+```bash
+# Check formatting
+bun format:native
+
+# Auto-fix formatting
+bun format:fix:native
+
+# Check lints
+bun lint:native
+
+# Auto-fix lints (where possible)
+bun lint:fix:native
+```
+
+### CI/CD
+
+Native tests and builds are integrated into the existing CI workflows:
+
+**Tests** (`.github/workflows/test-runner.yml`):
+
+- Unit tests run on macOS runner (OS-agnostic tests)
+- Runs automatically via `bun runAllTests` on all pushes and PRs
+- Executed as part of the main CI controller workflow
+
+**Compilation Checks** (`.github/workflows/native-build-check.yml`):
+
+- macOS: Verifies compilation for x86_64 and aarch64 architectures
+- Windows: Verifies cross-compilation for x86_64-pc-windows-gnu
+- Runs automatically on all pushes and PRs via the CI controller
+- Ensures binaries compile correctly for both platforms before merging
+
+**Release Builds** (`.github/workflows/build.yml`):
+
+- Full release compilation happens during tagged releases
+- Also includes compilation verification before packaging
+
+## Code Style Preferences
+
+- Keep code as simple as possible
+- Don't create overly long files
+- Group related code into useful, well-named functions
+- Prefer clean, readable code over complex solutions
+- Follow existing patterns and conventions in the codebase
 - Always prefer console commands over log commands. E.g. use `console.log` instead of `log.info`.
 
-## Testing Guidelines
+## Tech Stack
 
-- Unit tests run with Bun. Renderer/shared specs live in `lib/__tests__`; server tests reside under `server/src/**`. Name files with `.test.ts`.
-- Run `bun run runLibTests`, `bun run runServerTests`, or `bun run runAllTests`; paste output in PR notes.
-- Seed backend tests with `bun run local-db-up` and avoid hitting external services—mock microphone, OS, and network dependencies.
-
-## Commit & Pull Request Guidelines
-
-- Conventional commits are enforced via commitlint (example: `feat(app): add dictation overlay`). Scope by top-level folder.
-- PRs need a summary, linked issue, test commands, and screenshots/GIFs for UI work. Call out schema/config updates and refresh `.env.example` files.
-
-## Environment & Security Notes
-
-- Copy `.env.example` (root) and `server/.env.example`; never commit credentials.
-- After modifying protobufs or constants, run `bun run generate:constants` so `lib/generated` stays in sync with the app bundle.
+- TypeScript
+- Electron (desktop app framework)
+- React (UI components)
+- Bun (package manager and runtime)
+- gRPC with Protocol Buffers (client-server communication)
+- Zustand (state management)
+- Tailwind CSS + MUI + Radix UI (styling and components)
+- Rust + Swift (native binaries)
+- Auth0 (authentication)
+- Sentry (error monitoring)
+- LLM providers: Groq, Cerebras, OpenAI, Aliyun
