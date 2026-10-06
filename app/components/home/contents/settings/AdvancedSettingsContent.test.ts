@@ -67,3 +67,33 @@ test('unsupported options are explained while saved settings survive provider ch
   expect(input('noSpeechThreshold').readOnly).toBe(true)
   expect(container.textContent).toContain('background context or terminology')
 })
+test('polish provider and model show the defaults the server will use', async () => {
+  // Before the first sync, or with an older server that sends no polish defaults.
+  await act(async () =>
+    useAdvancedSettingsStore.setState({
+      defaults: undefined,
+      llmProviderDefaultModels: undefined,
+    }),
+  )
+  expect(input('polishLlmProvider').value).toBe('cerebras')
+  expect(input('polishLlmModel').value).toBe('qwen-3.8-27b')
+  await act(async () =>
+    useAdvancedSettingsStore.setState({
+      defaults: {
+        polishLlmProvider: 'groq',
+        polishLlmModel: 'custom-polish-model',
+      } as any,
+      llmProviderDefaultModels: { groq: 'groq-default', openai: 'gpt-default' },
+    }),
+  )
+  expect(input('polishLlmProvider').value).toBe('groq')
+  expect(input('polishLlmModel').value).toBe('custom-polish-model')
+  // POLISH_LLM_MODEL only applies to the server's default polish provider.
+  await act(async () =>
+    useAdvancedSettingsStore.setState(state => ({
+      llm: { ...state.llm, polishLlmProvider: 'openai' },
+    })),
+  )
+  expect(input('polishLlmModel').value).toBe('gpt-default')
+  expect(useAdvancedSettingsStore.getState().llm.polishLlmModel).toBeUndefined()
+})

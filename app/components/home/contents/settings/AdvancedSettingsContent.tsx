@@ -1,4 +1,5 @@
 import { getAsrCapabilities } from '../../../../../server/src/clients/asrCapabilities'
+import { DEFAULT_ADVANCED_SETTINGS } from '@/lib/constants/generated-defaults'
 import {
   LlmSettings,
   useAdvancedSettingsStore,
@@ -45,6 +46,10 @@ const FALLBACK_ASR_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   aliyun: 'qwen-audio-3.1-asr-flash',
   openai: 'whisper-1',
 }
+
+// The server uses this polish provider when neither the user nor
+// POLISH_LLM_PROVIDER chooses one.
+const DEFAULT_POLISH_LLM_PROVIDER = DEFAULT_ADVANCED_SETTINGS.polishLlmProvider
 
 const llmSettingsConfig: LlmSettingConfig[] = [
   {
@@ -330,17 +335,30 @@ export default function AdvancedSettingsContent() {
           }
         }
 
-        // Handle polishLlmModel similarly to llmModel
+        // Older servers don't send polish defaults; show the provider the
+        // server falls back to instead of the first <select> option.
+        if (key === 'polishLlmProvider') {
+          return defaults?.polishLlmProvider ?? DEFAULT_POLISH_LLM_PROVIDER
+        }
+
+        // Mirror the server: its polish model default (POLISH_LLM_MODEL)
+        // applies only to its default polish provider.
         if (key === 'polishLlmModel') {
           const resolvedProvider =
-            llm.polishLlmProvider ?? defaults?.polishLlmProvider
-          if (resolvedProvider) {
-            const providerDefaults =
-              llmProviderDefaultModels ?? FALLBACK_PROVIDER_DEFAULT_MODELS
-            const providerDefaultModel = providerDefaults[resolvedProvider]
-            if (providerDefaultModel) {
-              return providerDefaultModel
-            }
+            llm.polishLlmProvider ??
+            defaults?.polishLlmProvider ??
+            DEFAULT_POLISH_LLM_PROVIDER
+          if (
+            defaults?.polishLlmModel &&
+            resolvedProvider === defaults.polishLlmProvider
+          ) {
+            return defaults.polishLlmModel
+          }
+          const providerDefaults =
+            llmProviderDefaultModels ?? FALLBACK_PROVIDER_DEFAULT_MODELS
+          const providerDefaultModel = providerDefaults[resolvedProvider]
+          if (providerDefaultModel) {
+            return providerDefaultModel
           }
         }
 
