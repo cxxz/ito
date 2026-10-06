@@ -8,18 +8,22 @@ function estimateTokenCount(text: string): number {
 /**
  * Creates a transcription prompt that stays within the 224 token limit
  */
-export function createAsrPrompt(vocabulary: string[]): string {
+export function createAsrPrompt(
+  vocabulary: string[],
+  customPrompt = '',
+): string {
+  const prefix = customPrompt.trim()
   const suffix = ''
   const maxTokens = 224
 
   // If no vocabulary, just return the base instruction
   if (vocabulary.length === 0) {
-    const finalTokenCount = estimateTokenCount(suffix)
+    const finalTokenCount = estimateTokenCount(prefix)
     console.log(`Transcription prompt: ${finalTokenCount} estimated tokens`)
-    return suffix
+    return prefix
   }
 
-  const basePrompt = 'Dictionary entries include: '
+  const basePrompt = `${prefix ? prefix + '\n' : ''}Dictionary entries include: `
 
   // Calculate tokens for base prompt and suffix
   const baseTokens = estimateTokenCount(basePrompt + '. ' + suffix)
@@ -43,9 +47,9 @@ export function createAsrPrompt(vocabulary: string[]): string {
 
   // If vocabulary string is empty after processing, return just the suffix
   if (vocabString.trim() === '') {
-    const finalTokenCount = estimateTokenCount(suffix)
+    const finalTokenCount = estimateTokenCount(prefix)
     console.log(`Transcription prompt: ${finalTokenCount} estimated tokens`)
-    return suffix
+    return prefix
   }
 
   const finalPrompt = `${basePrompt}${vocabString}. ${suffix}`

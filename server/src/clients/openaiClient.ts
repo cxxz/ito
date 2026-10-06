@@ -12,6 +12,11 @@ import {
 } from './errors.js'
 import { ClientProvider } from './providers.js'
 import { LlmProvider } from './llmProvider.js'
+import {
+  getAsrCapabilities,
+  getNoSpeechProbability,
+} from './asrCapabilities.js'
+import { DEFAULT_ADVANCED_SETTINGS } from '../constants/generated-defaults.js'
 import { TranscriptionOptions } from './asrConfig.js'
 import { IntentTranscriptionOptions } from './intentTranscriptionConfig.js'
 import { createAsrPrompt } from '../prompts/transcription.js'
@@ -32,7 +37,11 @@ class OpenaiClient implements LlmProvider {
   private readonly _userCommandModel: string
   private readonly _isValid: boolean
 
-  constructor(apiKey: string, baseURL: string | undefined, userCommandModel: string) {
+  constructor(
+    apiKey: string,
+    baseURL: string | undefined,
+    userCommandModel: string,
+  ) {
     if (!apiKey) {
       throw new ClientApiKeyError(ClientProvider.OPENAI)
     }
@@ -86,7 +95,10 @@ class OpenaiClient implements LlmProvider {
         model,
         temperature,
       }
-      console.log('[OpenaiClient] LLM request body:', JSON.stringify(requestBody, null, 2))
+      console.log(
+        '[OpenaiClient] LLM request body:',
+        JSON.stringify(requestBody, null, 2),
+      )
       const completion = await this._client.chat.completions.create(requestBody)
 
       return completion.choices[0]?.message?.content?.trim() || ' '
@@ -115,8 +127,8 @@ class OpenaiClient implements LlmProvider {
     const fileType = options?.fileType || 'webm'
     const asrModel = options?.asrModel
     const vocabulary = options?.vocabulary
-    // const noSpeechThreshold =
-    //   options?.noSpeechThreshold ?? DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold
+    const noSpeechThreshold =
+      options?.noSpeechThreshold ?? DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold
 
     const file = await toFile(audioBuffer, `audio.${fileType}`)
     if (!this.isAvailable) {
@@ -132,27 +144,30 @@ class OpenaiClient implements LlmProvider {
       )
 
       const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
-      const transcriptionPrompt = createAsrPrompt(fullVocabulary)
+      const transcriptionPrompt = createAsrPrompt(
+        fullVocabulary,
+        options?.asrPrompt,
+      )
 
+      const capabilities = getAsrCapabilities('openai', asrModel)
       const transcription = await this._client.audio.transcriptions.create({
         file,
         model: asrModel,
-        prompt: transcriptionPrompt,
-        response_format: 'json',
+        ...(capabilities.prompt ? { prompt: transcriptionPrompt } : {}),
+        response_format:
+          capabilities.noSpeechProbability && noSpeechThreshold > 0
+            ? 'verbose_json'
+            : 'json',
       })
 
-      // const segments = (transcription as any).segments
-      // if (segments && segments.length > 0) {
-      //   const first = segments[0]
-      //   console.log('No speech probability:', first?.no_speech_prob)
-      //   // Only check no_speech if threshold is > 0 (0 means disabled)
-      //   if (noSpeechThreshold > 0 && first?.no_speech_prob > noSpeechThreshold) {
-      //     throw new ClientNoSpeechError(
-      //       ClientProvider.OPENAI,
-      //       first.no_speech_prob,
-      //     )
-      //   }
-      // }
+      const probability = capabilities.noSpeechProbability
+        ? getNoSpeechProbability(
+            (transcription as any).segments,
+            noSpeechThreshold,
+          )
+        : undefined
+      if (probability !== undefined)
+        throw new ClientNoSpeechError(ClientProvider.OPENAI, probability)
 
       return transcription.text.trim()
     } catch (error: any) {
@@ -199,9 +214,7 @@ if (apiKey) {
     openaiClient = null
   }
 } else {
-  console.log(
-    'OPENAI_API_KEY not set - OpenAI client will not be available',
-  )
+  console.log('OPENAI_API_KEY not set - OpenAI client will not be available')
   openaiClient = null
 }
 

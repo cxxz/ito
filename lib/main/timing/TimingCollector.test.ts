@@ -67,6 +67,26 @@ describe('TimingCollector', () => {
       expectLogIncludes(`Finalized interaction: ${interactionId}`)
     })
 
+    test('reports stop-to-insert separately from capture duration', async () => {
+      const id = 'latency-test'
+      timingCollector.startInteraction(id)
+      timingCollector.startTiming(TimingEventName.INTERACTION_ACTIVE, id)
+      timingCollector.endTiming(TimingEventName.INTERACTION_ACTIVE, id)
+      timingCollector.startTiming(TimingEventName.STOP_TO_INSERT, id)
+      await Bun.sleep(10)
+      timingCollector.endTiming(TimingEventName.STOP_TO_INSERT, id)
+      timingCollector.finalizeInteraction(id)
+      const summary = logSpy.mock.calls.find(
+        args =>
+          typeof args[0] === 'string' &&
+          args[0].includes('Finalized interaction'),
+      )?.[1] as any
+      expect(summary.durationsMs.stop_to_insert).toBeGreaterThanOrEqual(5)
+      expect(summary.durationsMs.interaction_active).toBeLessThan(
+        summary.durationsMs.stop_to_insert,
+      )
+    })
+
     test('skips entirely when shareAnalytics is disabled', () => {
       mockStore.get.mockImplementation((key: string) => {
         if (key === 'settings') {

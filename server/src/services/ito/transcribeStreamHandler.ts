@@ -12,6 +12,7 @@ import {
   TranscribeStreamResponseSchema,
   TranscribePhase,
 } from '../../generated/ito_pb.js'
+import { getAsrCapabilities } from '../../clients/asrCapabilities.js'
 import { getAsrProvider, getLlmProvider } from '../../clients/providerUtils.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../../constants/generated-defaults.js'
 import { errorToProtobuf } from '../../clients/errors.js'
@@ -121,12 +122,15 @@ export class TranscribeStreamHandler {
       // Extract configuration
       const asrConfig = this.extractAsrConfig(mergedConfig)
 
-      // Time transcription
+      // Time recognition independently from the optional cleanup request.
+      const asrStartedAt = performance.now()
       let transcript = await serverTimingCollector.timeAsync(
         ServerTimingEventName.ASR_TRANSCRIPTION,
         () => this.transcribeAudioData(fullAudioWAV, asrConfig, context),
         interactionId,
       )
+
+      const asrLatencyMs = Math.round(performance.now() - asrStartedAt)
 
       // Prepare context and settings
       const windowContext: ItoContext = {
@@ -159,6 +163,7 @@ export class TranscribeStreamHandler {
       }
 
       // Time transcript adjustment (only happens in EDIT mode or TRANSCRIBE with polish)
+      const adjustmentStartedAt = performance.now()
       const adjustResult = await this.adjustTranscriptForMode(
         transcript,
         mode,
@@ -166,6 +171,10 @@ export class TranscribeStreamHandler {
         advancedSettings,
         mergedConfig.vocabulary,
       )
+      const adjustmentLatencyMs =
+        mode === ItoMode.EDIT || advancedSettings.polishEnabled
+          ? Math.round(performance.now() - adjustmentStartedAt)
+          : 0
       transcript = adjustResult.transcript
       const polishError = adjustResult.polishError
 
@@ -198,6 +207,20 @@ export class TranscribeStreamHandler {
             transcript: originalTranscript,
             timestamp: new Date().toISOString(),
             durationMs: audioDurationMs,
+            asrLatencyMs,
+            adjustmentLatencyMs,
+            asrProvider: asrConfig.asrProvider,
+            asrModel: asrConfig.asrModel,
+            ignoredSettings: [
+              ...(!getAsrCapabilities(asrConfig.asrProvider, asrConfig.asrModel)
+                .prompt && asrConfig.asrPrompt
+                ? ['asrPrompt']
+                : []),
+              ...(!getAsrCapabilities(asrConfig.asrProvider, asrConfig.asrModel)
+                .noSpeechProbability && asrConfig.noSpeechThreshold > 0
+                ? ['noSpeechThreshold']
+                : []),
+            ],
           })
 
           // Create LLM output object
@@ -420,6 +443,10 @@ export class TranscribeStreamHandler {
         DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold,
       ),
       vocabulary: mergedConfig.vocabulary,
+      asrPrompt: this.resolveOrDefault(
+        mergedConfig.llmSettings?.asrPrompt,
+        DEFAULT_ADVANCED_SETTINGS.asrPrompt,
+      ),
     }
   }
 
@@ -525,6 +552,7 @@ export class TranscribeStreamHandler {
       asrModel: asrConfig.asrModel,
       noSpeechThreshold: asrConfig.noSpeechThreshold,
       vocabulary: asrConfig.vocabulary,
+      asrPrompt: asrConfig.asrPrompt,
     })
 
     console.log(

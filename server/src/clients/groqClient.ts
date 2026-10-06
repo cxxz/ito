@@ -13,6 +13,7 @@ import {
 } from './errors.js'
 import { ClientProvider } from './providers.js'
 import { LlmProvider } from './llmProvider.js'
+import { getNoSpeechProbability } from './asrCapabilities.js'
 import { TranscriptionOptions } from './asrConfig.js'
 import { IntentTranscriptionOptions } from './intentTranscriptionConfig.js'
 import { DEFAULT_ADVANCED_SETTINGS } from '../constants/generated-defaults.js'
@@ -79,7 +80,10 @@ class GroqClient implements LlmProvider {
         model,
         temperature,
       }
-      console.log('[GroqClient] LLM request body:', JSON.stringify(requestBody, null, 2))
+      console.log(
+        '[GroqClient] LLM request body:',
+        JSON.stringify(requestBody, null, 2),
+      )
       const completion = await this._client.chat.completions.create(requestBody)
 
       // Return a space to enable emptying the document
@@ -128,7 +132,10 @@ class GroqClient implements LlmProvider {
       const fullVocabulary = [...itoVocabulary, ...(vocabulary || [])]
 
       // Create a concise but effective transcription prompt
-      const transcriptionPrompt = createAsrPrompt(fullVocabulary)
+      const transcriptionPrompt = createAsrPrompt(
+        fullVocabulary,
+        options?.asrPrompt,
+      )
 
       const transcription = await this._client.audio.transcriptions.create({
         // The toFile helper correctly handles buffers for multipart/form-data uploads.
@@ -139,18 +146,12 @@ class GroqClient implements LlmProvider {
         response_format: 'verbose_json',
       })
 
-      const segments = (transcription as any).segments
-      if (segments && segments.length > 0) {
-        const first = segments[0]
-        console.log('No speech probability:', first?.no_speech_prob)
-        // Only check no_speech if threshold is > 0 (0 means disabled)
-        if (noSpeechThreshold > 0 && first?.no_speech_prob > noSpeechThreshold) {
-          throw new ClientNoSpeechError(
-            ClientProvider.GROQ,
-            first.no_speech_prob,
-          )
-        }
-      }
+      const probability = getNoSpeechProbability(
+        (transcription as any).segments,
+        noSpeechThreshold,
+      )
+      if (probability !== undefined)
+        throw new ClientNoSpeechError(ClientProvider.GROQ, probability)
 
       // The Node SDK returns the full object, the text is in the `text` property.
       return transcription.text.trim()

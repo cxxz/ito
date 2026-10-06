@@ -14,13 +14,17 @@ describe('polishPrompt', () => {
     })
 
     it('should format vocabulary list with one term per line', () => {
-      const result = buildVocabularySection(['Kubernetes', 'gRPC', 'TypeScript'])
+      const result = buildVocabularySection([
+        'Kubernetes',
+        'gRPC',
+        'TypeScript',
+      ])
 
       expect(result).toContain('Kubernetes')
       expect(result).toContain('gRPC')
       expect(result).toContain('TypeScript')
-      expect(result).toContain('<dictionary_list>')
-      expect(result).toContain('</dictionary_list>')
+      expect(result).toContain('<terminology_dictionary>')
+      expect(result).toContain('</terminology_dictionary>')
     })
 
     it('should preserve case sensitivity in vocabulary', () => {
@@ -35,7 +39,7 @@ describe('polishPrompt', () => {
       const result = buildVocabularySection(['test'])
 
       expect(result).toContain('Dictionary rules:')
-      expect(result).toContain('phonetic/visual match')
+      expect(result).toContain('phonetic or orthographic match')
       expect(result).toContain('capitalization')
     })
 
@@ -55,8 +59,8 @@ describe('polishPrompt', () => {
       const result = buildVocabularySection(['SingleTerm'])
 
       expect(result).toContain('SingleTerm')
-      expect(result).toContain('<dictionary_list>')
-      expect(result).toContain('</dictionary_list>')
+      expect(result).toContain('<terminology_dictionary>')
+      expect(result).toContain('</terminology_dictionary>')
     })
 
     it('should join vocabulary with newlines', () => {
@@ -70,24 +74,28 @@ describe('polishPrompt', () => {
   describe('createPolishPrompt', () => {
     const basePrompt = 'You are a transcript polisher.'
 
-    it('should return base prompt unchanged when no vocabulary', () => {
+    it('should keep base prompt and output rules when no vocabulary', () => {
       const result = createPolishPrompt(basePrompt, [])
-      expect(result).toBe(basePrompt)
+      expect(result).toStartWith(basePrompt + '\n')
+      expect(result).toContain('<output_format>')
+      expect(result).not.toContain('<terminology_dictionary>')
     })
 
-    it('should return base prompt unchanged when vocabulary is undefined', () => {
+    it('should keep base prompt and output rules when vocabulary is undefined', () => {
       const result = createPolishPrompt(
         basePrompt,
         undefined as unknown as string[],
       )
-      expect(result).toBe(basePrompt)
+      expect(result).toStartWith(basePrompt + '\n')
+      expect(result).toContain('<output_format>')
+      expect(result).not.toContain('<terminology_dictionary>')
     })
 
     it('should append vocabulary section when vocabulary provided', () => {
       const result = createPolishPrompt(basePrompt, ['test'])
 
       expect(result).toContain(basePrompt)
-      expect(result).toContain('<dictionary_list>')
+      expect(result).toContain('<terminology_dictionary>')
       expect(result).toContain('test')
     })
 
@@ -95,7 +103,7 @@ describe('polishPrompt', () => {
       const result = createPolishPrompt(basePrompt, ['term1', 'term2'])
 
       const basePromptIndex = result.indexOf(basePrompt)
-      const dictionaryIndex = result.indexOf('<dictionary_list>')
+      const dictionaryIndex = result.indexOf('<terminology_dictionary>')
 
       expect(basePromptIndex).toBeLessThan(dictionaryIndex)
     })
@@ -108,7 +116,7 @@ Preserve meaning.`
       const result = createPolishPrompt(multiLinePrompt, ['test'])
 
       expect(result).toContain(multiLinePrompt)
-      expect(result).toContain('<dictionary_list>')
+      expect(result).toContain('<terminology_dictionary>')
     })
 
     it('should handle large vocabulary lists', () => {

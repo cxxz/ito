@@ -11,6 +11,7 @@ export enum TimingEventName {
   WINDOW_CONTEXT_GATHER = 'window_context_gather',
   GRAMMAR_SERVICE = 'grammar_service',
   CURSOR_CONTEXT_GATHER = 'cursor_context_gather',
+  STOP_TO_INSERT = 'stop_to_insert',
   TEXT_WRITER = 'text_writer',
 }
 
@@ -129,6 +130,13 @@ export class TimingCollector {
 
     console.log(
       `[TimingCollector] Finalized interaction: ${id} (${events.length} events, ${totalDuration}ms total)`,
+      {
+        durationsMs: Object.fromEntries(
+          events
+            .filter(event => event.durationMs !== undefined)
+            .map(event => [event.name, Math.round(event.durationMs!)]),
+        ),
+      },
     )
   }
 

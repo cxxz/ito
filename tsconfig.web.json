@@ -3,6 +3,7 @@
   "include": [
     "app/index.d.ts",
     "app/**/*",
+    "server/src/clients/asrCapabilities.ts",
     "lib/**/*",
     "lib/preload/*.d.ts",
     "resources/**/*"

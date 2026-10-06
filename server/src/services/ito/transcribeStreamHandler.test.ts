@@ -8,7 +8,9 @@ import {
 } from '../../generated/ito_pb.js'
 import { kUser } from '../../auth/userContext.js'
 
-const transcribeAudio = mock(async () => 'hello world')
+const transcribeAudio = mock(
+  async (_audio?: Buffer, _options?: any) => 'hello world',
+)
 const adjustTranscript = mock(async () => 'Hello world.')
 mock.module('../../clients/providerUtils.js', () => ({
   getAsrProvider: () => ({ transcribeAudio }),
@@ -34,7 +36,7 @@ function requests(polishEnabled = false) {
         value: create(StreamConfigSchema, {
           interactionId: 'recording-1',
           context: { mode: ItoMode.TRANSCRIBE },
-          llmSettings: { polishEnabled },
+          llmSettings: { polishEnabled, asrPrompt: 'Meeting about Ito' },
         }),
       },
     })
@@ -96,6 +98,10 @@ test('raw mode avoids a polishing request; polish mode reports its separate phas
   ))
     raw.push(response)
   expect(adjustTranscript).not.toHaveBeenCalled()
+  expect(transcribeAudio.mock.calls[0]?.[1]?.asrPrompt).toBe(
+    'Meeting about Ito',
+  )
+  expect(JSON.parse(raw[0]!.interaction!.asrOutput).adjustmentLatencyMs).toBe(0)
   const polished = []
   for await (const response of new TranscribeStreamHandler().process(
     requests(true),
@@ -112,4 +118,27 @@ test('raw mode avoids a polishing request; polish mode reports its separate phas
   expect(JSON.parse(complete.interaction!.llmOutput).polishedTranscript).toBe(
     'Hello world.',
   )
+})
+
+test('records recognition and polishing latency independently', async () => {
+  transcribeAudio.mockImplementationOnce(async () => {
+    await Bun.sleep(20)
+    return 'hello world'
+  })
+  adjustTranscript.mockImplementationOnce(async () => {
+    await Bun.sleep(40)
+    return 'Hello world.'
+  })
+  const responses = []
+  for await (const response of new TranscribeStreamHandler().process(
+    requests(true),
+    context(),
+  ))
+    responses.push(response)
+  const timing = JSON.parse(
+    responses[responses.length - 1]!.interaction!.asrOutput,
+  )
+  expect(timing.asrLatencyMs).toBeGreaterThanOrEqual(15)
+  expect(timing.adjustmentLatencyMs).toBeGreaterThanOrEqual(35)
+  expect(timing.durationMs).toBe(1000)
 })

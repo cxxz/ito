@@ -1,3 +1,4 @@
+import { getAsrCapabilities } from '../../../../../server/src/clients/asrCapabilities'
 import {
   LlmSettings,
   useAdvancedSettingsStore,
@@ -126,7 +127,8 @@ const llmSettingsConfig: LlmSettingConfig[] = [
     name: 'noSpeechThreshold',
     label: 'No Speech Threshold',
     placeholder: 'e.g., 0.6',
-    description: 'Threshold for detecting no speech segments in audio.',
+    description:
+      'Reject audio only when all reported segments exceed this silence probability. Set 0 to disable.',
     maxLength: floatLengthLimit,
   },
   // Polish mode settings
@@ -135,7 +137,7 @@ const llmSettingsConfig: LlmSettingConfig[] = [
     label: 'Polish Transcriptions',
     placeholder: '',
     description:
-      'Clean up speech disfluencies (uh, um, false starts) using LLM in Transcribe mode.',
+      'Clean up speech disfluencies using a separate model request after recognition. Turn off for faster raw dictation.',
     maxLength: 0,
     isToggle: true,
   },
@@ -574,7 +576,39 @@ export default function AdvancedSettingsContent() {
             {llmSettingsConfig.map(config => (
               <SettingInput
                 key={config.name}
-                config={config}
+                config={(() => {
+                  const capabilities = getAsrCapabilities(
+                    String(getDisplayValue('asrProvider') || ''),
+                    String(getDisplayValue('asrModel') || ''),
+                  )
+                  if (config.name === 'asrPrompt' && !capabilities.prompt)
+                    return {
+                      ...config,
+                      readOnly: true,
+                      description:
+                        'Custom ASR prompts are unavailable for this model. Qwen-Audio uses dictionary hints only; OpenAI diarization does not accept prompts.',
+                    }
+                  if (
+                    config.name === 'asrPrompt' &&
+                    getDisplayValue('asrProvider') === 'aliyun'
+                  )
+                    return {
+                      ...config,
+                      description:
+                        'Qwen3-ASR uses this as background context or terminology, rather than instructions. Dictionary terms are appended.',
+                    }
+                  if (
+                    config.name === 'noSpeechThreshold' &&
+                    !capabilities.noSpeechProbability
+                  )
+                    return {
+                      ...config,
+                      readOnly: true,
+                      description:
+                        'Unavailable for this model. Silence probabilities are supported by OpenAI whisper-1 and Groq Whisper. Your saved value is preserved for supported models.',
+                    }
+                  return config
+                })()}
                 value={getDisplayValue(config.name)}
                 onChange={handleInputChange}
               />

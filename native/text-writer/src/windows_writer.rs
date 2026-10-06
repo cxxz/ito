@@ -23,6 +23,8 @@ pub fn type_text_windows(text: &str, _char_delay: u64) -> Result<(), String> {
         .map_err(|e| format!("Failed to set clipboard: {:?}", e))?;
     let owned = seq_num();
 
+    let mut ctrl_pressed = false;
+    let mut v_pressed = false;
     let paste_result = (|| {
         // Verify clipboard was actually set by reading it back
         let mut attempts = 0;
@@ -39,16 +41,22 @@ pub fn type_text_windows(text: &str, _char_delay: u64) -> Result<(), String> {
             }
         }
 
+        if owned.is_none() || seq_num() != owned {
+            return Err("Clipboard changed before paste could be dispatched".to_string());
+        }
+
         // Simulate Ctrl+V (paste)
         // Press Ctrl
         enigo
             .key(Key::Control, enigo::Direction::Press)
             .map_err(|e| format!("Failed to press Ctrl: {}", e))?;
+        ctrl_pressed = true;
 
         // Press V
         enigo
             .key(Key::Unicode('v'), enigo::Direction::Press)
             .map_err(|e| format!("Failed to press V: {}", e))?;
+        v_pressed = true;
 
         // Small delay to ensure the key press is registered
         thread::sleep(Duration::from_millis(20));
@@ -57,17 +65,23 @@ pub fn type_text_windows(text: &str, _char_delay: u64) -> Result<(), String> {
         enigo
             .key(Key::Unicode('v'), enigo::Direction::Release)
             .map_err(|e| format!("Failed to release V: {}", e))?;
+        v_pressed = false;
 
         // Release Ctrl
         enigo
             .key(Key::Control, enigo::Direction::Release)
             .map_err(|e| format!("Failed to release Ctrl: {}", e))?;
+        ctrl_pressed = false;
 
         Ok(())
     })();
     // Release modifiers even when an input event fails partway through paste.
-    let _ = enigo.key(Key::Unicode('v'), enigo::Direction::Release);
-    let _ = enigo.key(Key::Control, enigo::Direction::Release);
+    if v_pressed {
+        let _ = enigo.key(Key::Unicode('v'), enigo::Direction::Release);
+    }
+    if ctrl_pressed {
+        let _ = enigo.key(Key::Control, enigo::Direction::Release);
+    }
 
     if let Ok(old_text) = old_contents {
         thread::sleep(Duration::from_secs(1));

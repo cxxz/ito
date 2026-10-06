@@ -176,3 +176,14 @@ describe('transcription', () => {
     })
   })
 })
+
+it('keeps custom context ahead of bounded dictionary hints', () => {
+  const custom = 'Medical consultation about café'
+  expect(createAsrPrompt([], custom)).toBe(custom)
+  const result = createAsrPrompt(
+    Array.from({ length: 500 }, (_, i) => `Term${i}`),
+    custom,
+  )
+  expect(result).toStartWith(custom + '\nDictionary entries include:')
+  expect(result.length).toBeLessThanOrEqual(896)
+})

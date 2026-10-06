@@ -63,7 +63,7 @@ describe('AliyunClient', () => {
 
       const audioBuffer = Buffer.from('mock audio data')
       const result = await aliyunClient!.transcribeAudio(audioBuffer, {
-        asrModel: 'qwen-audio-3.1-asr-flash',
+        asrModel: 'qwen3-asr-flash',
       })
 
       expect(result).toBe('Hello world')
@@ -80,7 +80,7 @@ describe('AliyunClient', () => {
       })
 
       const body = JSON.parse(options.body as string)
-      expect(body.model).toBe('qwen-audio-3.1-asr-flash')
+      expect(body.model).toBe('qwen3-asr-flash')
       expect(body.input.messages).toHaveLength(2)
       expect(body.input.messages[0].role).toBe('system')
       expect(body.input.messages[1].role).toBe('user')
@@ -88,6 +88,26 @@ describe('AliyunClient', () => {
         /^data:audio\/wav;base64,/,
       )
       expect(body.parameters).toEqual({ asr_options: { enable_itn: false } })
+    })
+
+    it('sends custom background context to Qwen3-ASR', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output: { choices: [{ message: { content: [{ text: 'Hello' }] } }] },
+        }),
+      })
+      await aliyunClient!.transcribeAudio(Buffer.from('audio'), {
+        asrModel: 'qwen3-asr-flash',
+        asrPrompt: 'Meeting about Ito',
+        vocabulary: ['東京'],
+      })
+      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const body = JSON.parse(options.body as string)
+      expect(body.input.messages[0].content[0].text).toContain(
+        'Meeting about Ito\nDictionary entries include:',
+      )
+      expect(body.input.messages[0].content[0].text).toContain('東京')
     })
 
     it('should transcribe Qwen-Audio with its required payload and response format', async () => {
@@ -217,18 +237,7 @@ describe('AliyunClient', () => {
     })
 
     it('should use default ASR model when not specified', async () => {
-      const mockResponse = {
-        output: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: [{ text: 'Test transcription' }],
-              },
-            },
-          ],
-        },
-      }
+      const mockResponse = { output: { text: 'Test transcription' } }
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -264,7 +273,7 @@ describe('AliyunClient', () => {
 
       const audioBuffer = Buffer.from('mock audio data')
       const result = await aliyunClient!.transcribeAudio(audioBuffer, {
-        asrModel: 'qwen-audio-3.1-asr-flash',
+        asrModel: 'qwen3-asr-flash',
       })
 
       expect(result).toBe('Hello world')
@@ -348,7 +357,7 @@ describe('AliyunClient', () => {
 
       const audioBuffer = Buffer.from('test audio content')
       await aliyunClient!.transcribeAudio(audioBuffer, {
-        asrModel: 'qwen-audio-3.1-asr-flash',
+        asrModel: 'qwen3-asr-flash',
       })
 
       const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]

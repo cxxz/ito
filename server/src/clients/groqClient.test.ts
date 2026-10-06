@@ -44,9 +44,7 @@ mock.module('dotenv', () => ({
 
 // Now we can safely import the groqClient
 const { groqClient, itoVocabulary } = await import('./groqClient.js')
-const { createAsrPrompt } = await import(
-  '../prompts/transcription.js'
-)
+const { createAsrPrompt } = await import('../prompts/transcription.js')
 
 describe('GroqClient', () => {
   const NO_SPEECH_THRESHOLD = 0.6
@@ -326,4 +324,23 @@ describe('GroqClient', () => {
       expect(result).toBe(' ')
     })
   })
+})
+
+it('sends custom ASR prompts alongside vocabulary without rejecting speech after initial silence', async () => {
+  mockGroqClient.audio.transcriptions.create.mockResolvedValueOnce({
+    text: 'real speech',
+    segments: [{ no_speech_prob: 0.99 }, { no_speech_prob: 0.1 }],
+  })
+  expect(
+    await groqClient.transcribeAudio(Buffer.from('audio'), {
+      asrModel: 'whisper-large-v3',
+      asrPrompt: 'Meeting about Ito',
+      vocabulary: ['東京'],
+      noSpeechThreshold: 0.6,
+    }),
+  ).toBe('real speech')
+  const calls = mockGroqClient.audio.transcriptions.create.mock.calls as any[]
+  expect(calls[calls.length - 1][0].prompt).toContain(
+    'Meeting about Ito\nDictionary entries include:',
+  )
 })

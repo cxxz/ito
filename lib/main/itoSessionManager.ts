@@ -257,6 +257,10 @@ export class ItoSessionManager {
       await session.startPromise
       if (session.cancelled || this.session !== session) return
       session.phase = 'finishing'
+      timingCollector.startTiming(
+        TimingEventName.STOP_TO_INSERT,
+        session.interactionId,
+      )
       timingCollector.endTiming(TimingEventName.INTERACTION_ACTIVE)
       await this.stopAudio(session)
       if (session.cancelled) return
@@ -339,6 +343,10 @@ export class ItoSessionManager {
         }
 
         const inserted = await this.textInserter.insertText(textToInsert)
+        timingCollector.endTiming(
+          TimingEventName.STOP_TO_INSERT,
+          session.interactionId,
+        )
         const insertionError = inserted
           ? undefined
           : 'Text could not be inserted. Your transcript is saved in Recent activity.'

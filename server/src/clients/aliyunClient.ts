@@ -176,7 +176,11 @@ class AliyunClient implements LlmProvider {
               messages: [
                 {
                   role: 'system',
-                  content: [{ text: createAsrPrompt(fullVocabulary) }],
+                  content: [
+                    {
+                      text: createAsrPrompt(fullVocabulary, options?.asrPrompt),
+                    },
+                  ],
                 },
                 {
                   role: 'user',
