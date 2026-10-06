@@ -1,8 +1,64 @@
-import { describe, test, expect, beforeEach } from 'bun:test'
+import { describe, test, expect, beforeEach, mock } from 'bun:test'
 import { AudioStreamManager } from './AudioStreamManager'
 import { audioRecorderService } from '../../media/audio'
 
 describe('AudioStreamManager', () => {
+  test('bounds backlog before accepting a chunk and reports the failure once', () => {
+    const onError = mock()
+    const manager = new AudioStreamManager(onError, {
+      maxQueuedMs: 10,
+      maxDurationMs: 1000,
+      maxRetainedBytes: 32000,
+    })
+    manager.initialize()
+    manager.addAudioChunk(Buffer.alloc(320))
+    manager.addAudioChunk(Buffer.alloc(2))
+    manager.addAudioChunk(Buffer.alloc(1000))
+    expect(manager.isCurrentlyStreaming()).toBe(false)
+    expect(manager.getInteractionAudioBuffer()).toHaveLength(320)
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][0].code).toBe('AUDIO_BACKLOG_LIMIT')
+  })
+
+  test('consuming upload chunks releases backlog capacity but still enforces total retention', async () => {
+    const onError = mock()
+    const manager = new AudioStreamManager(onError, {
+      maxQueuedMs: 10,
+      maxDurationMs: 1000,
+      maxRetainedBytes: 640,
+    })
+    manager.initialize()
+    const stream = manager.streamAudioChunks()
+    for (let i = 0; i < 2; i++) {
+      manager.addAudioChunk(Buffer.alloc(320))
+      expect((await stream.next()).value?.audioData).toHaveLength(320)
+    }
+    manager.addAudioChunk(Buffer.alloc(2))
+    expect(onError.mock.calls[0][0].code).toBe('RECORDING_LIMIT')
+    expect(manager.getInteractionAudioBuffer()).toHaveLength(640)
+    manager.clearInteractionAudio()
+    expect(manager.getAudioDurationMs()).toBe(0)
+    await stream.return()
+  })
+
+  test('the recording deadline stops stalled capture and reset permits another session', async () => {
+    const onError = mock()
+    const manager = new AudioStreamManager(onError, {
+      maxQueuedMs: 100,
+      maxDurationMs: 10,
+      maxRetainedBytes: 1000,
+    })
+    manager.initialize()
+    manager.addAudioChunk(Buffer.alloc(2))
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(manager.isCurrentlyStreaming()).toBe(false)
+    manager.initialize()
+    manager.addAudioChunk(Buffer.alloc(2))
+    expect(manager.isCurrentlyStreaming()).toBe(true)
+    expect(manager.getInteractionAudioBuffer()).toHaveLength(2)
+    manager.stopStreaming()
+  })
   let audioManager: AudioStreamManager
 
   beforeEach(() => {

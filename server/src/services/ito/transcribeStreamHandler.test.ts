@@ -51,6 +51,24 @@ const context = () =>
     signal: new AbortController().signal,
   }) as any
 
+test('bounds incoming audio before concatenating or invoking a provider', async () => {
+  async function* oversized() {
+    yield create(TranscribeStreamRequestSchema, {
+      payload: {
+        case: 'audioData',
+        value: new Uint8Array(20 * 1024 * 1024 + 1),
+      },
+    })
+  }
+  const responses = new TranscribeStreamHandler().process(
+    oversized(),
+    context(),
+  )
+  const iterator = responses[Symbol.asyncIterator]()
+  await expect(iterator.next()).rejects.toThrow('audio limit')
+  expect(transcribeAudio).not.toHaveBeenCalled()
+})
+
 test('delivers complete metadata before database persistence and keeps persistence alive on response close', async () => {
   const saved = Promise.withResolvers<any>()
   persist.mockImplementationOnce(() => saved.promise)

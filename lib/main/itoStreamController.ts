@@ -43,7 +43,9 @@ export class ItoStreamController {
       return false
     }
 
-    this.audioStreamManager = new AudioStreamManager()
+    this.audioStreamManager = new AudioStreamManager(error =>
+      this.abortController?.abort(error),
+    )
     this.audioStreamManager.initialize()
     this.hasStartedGrpc = false
     this.currentMode = mode

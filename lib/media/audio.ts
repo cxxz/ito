@@ -291,8 +291,17 @@ class AudioRecorderService extends EventEmitter {
           this.#ready = true
           this.#checkReady()
         } else if (jsonResponse.type === 'recording-error') {
-          const error = new Error(jsonResponse.message || 'Microphone failed')
+          const error = Object.assign(
+            new Error(jsonResponse.message || 'Microphone failed'),
+            {
+              code: jsonResponse.code,
+              droppedFrames: jsonResponse.dropped_frames,
+              droppedSamples: jsonResponse.dropped_samples,
+            },
+          )
           this.#startup?.reject(error)
+          this.#drainPromise?.reject(error)
+          this.#drainPromise = null
           if (this.#recordingRequested) this.emit('recording-error', error)
         } else if (
           jsonResponse.type === 'device-list' &&
@@ -311,7 +320,19 @@ class AudioRecorderService extends EventEmitter {
           })
         } else if (jsonResponse.type === 'drain-complete') {
           if (this.#drainPromise) {
-            this.#drainPromise.resolve()
+            if (jsonResponse.dropped_frames > 0) {
+              this.#drainPromise.reject(
+                Object.assign(
+                  new Error(
+                    'Audio capture dropped frames. Please try recording again.',
+                  ),
+                  {
+                    code: 'AUDIO_OVERLOAD',
+                    droppedFrames: jsonResponse.dropped_frames,
+                  },
+                ),
+              )
+            } else this.#drainPromise.resolve()
             this.#drainPromise = null
           }
         }

@@ -519,6 +519,29 @@ function emitRecorderMessage(type: number, payload: Buffer) {
   mockChildProcess.stdout.emit('data', frame)
 }
 
+test('dropped native frames reject drain even when recording was already stopped', async () => {
+  audioRecorderService.terminate()
+  mockChildProcess.stdout.removeAllListeners()
+  audioRecorderService.initialize()
+  const drain = audioRecorderService.awaitDrainComplete()
+  audioRecorderService.stopRecording()
+  emitRecorderMessage(
+    1,
+    Buffer.from(
+      JSON.stringify({
+        type: 'drain-complete',
+        dropped_frames: 2,
+        dropped_samples: 1024,
+      }),
+    ),
+  )
+  await expect(drain).rejects.toMatchObject({
+    code: 'AUDIO_OVERLOAD',
+    droppedFrames: 2,
+  })
+  audioRecorderService.terminate()
+})
+
 test('microphone startup needs both a native ready acknowledgment and first audio', async () => {
   audioRecorderService.terminate()
   mockChildProcess.stdout.removeAllListeners()

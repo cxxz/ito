@@ -1,3 +1,6 @@
+mod capture_queue;
+use capture_queue::QueueBudget;
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Write};
@@ -309,6 +312,7 @@ fn writer_loop(
     audio_rx: crossbeam_channel::Receiver<Vec<f32>>,
     stdout: Arc<Mutex<io::Stdout>>,
     input_sample_rate: u32,
+    budget: Arc<QueueBudget>,
 ) {
     const TARGET_SAMPLE_RATE: u32 = 16000;
     const RESAMPLER_CHUNK_SIZE_DEFAULT: usize = 1024;
@@ -384,7 +388,27 @@ fn writer_loop(
         out
     }
 
-    while let Ok(frame) = audio_rx.recv() {
+    loop {
+        if budget.overloaded() {
+            let (frames, samples) = budget.dropped();
+            let response = serde_json::json!({
+                "type": "recording-error", "code": "AUDIO_OVERLOAD",
+                "message": "Audio capture could not keep up. Recording stopped to avoid losing speech. Please try again.",
+                "dropped_frames": frames, "dropped_samples": samples,
+            });
+            if let Ok(json_string) = serde_json::to_string(&response) {
+                let mut writer = stdout.lock().unwrap();
+                let _ = write_framed_message(&mut *writer, MSG_TYPE_JSON, json_string.as_bytes());
+            }
+            in_buffer.clear();
+            break;
+        }
+        let frame = match audio_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(frame) => frame,
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+        };
+        budget.release(frame.len());
         if let Some(resampler) = resampler_opt.as_mut() {
             in_buffer.extend_from_slice(&frame);
             while in_buffer.len() >= chosen_chunk_size {
@@ -443,8 +467,9 @@ fn writer_loop(
     }
 
     // Signal drain complete to the host via a JSON message
+    let (frames, samples) = budget.dropped();
     let response = serde_json::json!({
-        "type": "drain-complete"
+        "type": "drain-complete", "dropped_frames": frames, "dropped_samples": samples,
     });
     if let Ok(json_string) = serde_json::to_string(&response) {
         let mut writer = stdout.lock().unwrap();
@@ -458,7 +483,7 @@ fn start_capture(
     host: Rc<cpal::Host>,
 ) -> Result<CaptureHandles> {
     const TARGET_SAMPLE_RATE: u32 = 16000;
-    const QUEUE_CAPACITY: usize = 512;
+    const QUEUE_CAPACITY: usize = 128;
 
     let device = if let Some(name) = device_name {
         if name.to_lowercase() == "default" || name.is_empty() {
@@ -490,9 +515,16 @@ fn start_capture(
 
     // Writer thread and queue
     let (audio_tx, audio_rx) = crossbeam_channel::bounded::<Vec<f32>>(QUEUE_CAPACITY);
+    let budget = Arc::new(QueueBudget::new(input_sample_rate as usize * 2));
+    let writer_budget = Arc::clone(&budget);
     let stdout_for_writer = Arc::clone(&stdout);
     let writer_handle = std::thread::spawn(move || {
-        writer_loop(audio_rx, stdout_for_writer, input_sample_rate);
+        writer_loop(
+            audio_rx,
+            stdout_for_writer,
+            input_sample_rate,
+            writer_budget,
+        );
     });
 
     // Notify JS about input and effective output audio configuration
@@ -512,11 +544,16 @@ fn start_capture(
     let stream = match input_sample_format {
         SampleFormat::F32 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,
@@ -524,11 +561,16 @@ fn start_capture(
         }
         SampleFormat::I16 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,
@@ -536,11 +578,16 @@ fn start_capture(
         }
         SampleFormat::U16 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[u16], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,
@@ -548,11 +595,16 @@ fn start_capture(
         }
         SampleFormat::U8 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[u8], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,
@@ -560,11 +612,16 @@ fn start_capture(
         }
         SampleFormat::I32 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i32], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,
@@ -572,11 +629,16 @@ fn start_capture(
         }
         SampleFormat::F64 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[f64], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,
@@ -584,11 +646,16 @@ fn start_capture(
         }
         SampleFormat::U32 => {
             let tx = audio_tx.clone();
+            let budget = Arc::clone(&budget);
             device.build_input_stream(
                 &stream_config,
                 move |data: &[u32], _| {
+                    if budget.overloaded() {
+                        budget.drop_frame(data.len() / channels_count);
+                        return;
+                    }
                     let mono = downmix_to_mono_vec(data, channels_count);
-                    let _ = tx.try_send(mono);
+                    budget.enqueue(&tx, mono);
                 },
                 err_fn,
                 None,

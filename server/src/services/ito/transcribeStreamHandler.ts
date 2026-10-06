@@ -309,6 +309,7 @@ export class TranscribeStreamHandler {
     previousMode: ItoMode | undefined
   }> {
     const audioChunks: Uint8Array[] = []
+    let audioBytes = 0
     let mergedConfig: StreamConfig = create(StreamConfigSchema, {
       context: undefined,
       llmSettings: undefined,
@@ -320,6 +321,13 @@ export class TranscribeStreamHandler {
     try {
       for await (const request of requests) {
         if (request.payload.case === 'audioData') {
+          audioBytes += request.payload.value.length
+          if (audioBytes > 20 * 1024 * 1024) {
+            throw new ConnectError(
+              'Recording exceeds the 20 MiB audio limit. Please dictate in shorter segments.',
+              Code.ResourceExhausted,
+            )
+          }
           audioChunks.push(request.payload.value)
         } else if (request.payload.case === 'config') {
           const currentMode = mergedConfig.context?.mode

@@ -37,8 +37,12 @@ const mockAudioStreamManager = {
       },
   ),
 }
+let onAudioError: ((error: Error) => void) | undefined
 mock.module('./audio/AudioStreamManager', () => ({
   AudioStreamManager: class MockAudioStreamManager {
+    constructor(onError?: (error: Error) => void) {
+      onAudioError = onError
+    }
     isCurrentlyStreaming = mockAudioStreamManager.isCurrentlyStreaming
     initialize = mockAudioStreamManager.initialize
     stopStreaming = mockAudioStreamManager.stopStreaming
@@ -51,6 +55,21 @@ mock.module('./audio/AudioStreamManager', () => ({
     streamAudioChunks = mockAudioStreamManager.streamAudioChunks
   },
 }))
+
+test('capture overload aborts an in-flight request without returning a partial transcript', async () => {
+  const { ItoStreamController } = await import('./itoStreamController')
+  const controller = new ItoStreamController()
+  await controller.initialize(ItoMode.TRANSCRIBE)
+  mockGrpcClient.transcribeStream.mockImplementationOnce(
+    () => new Promise(() => {}),
+  )
+  const result = controller.startGrpcStream()
+  const error = Object.assign(new Error('Audio capture overloaded'), {
+    code: 'AUDIO_BACKLOG_LIMIT',
+  })
+  onAudioError!(error)
+  await expect(result).rejects.toMatchObject({ code: 'AUDIO_BACKLOG_LIMIT' })
+})
 
 const mockContextGrabber = {
   gatherContext: mock(() =>
