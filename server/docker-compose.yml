@@ -2,7 +2,7 @@ services:
   ito-grpc-server:
     build: .
     ports:
-      - '127.0.0.1:$PORT:$PORT'
+      - '${BIND_ADDRESS:-127.0.0.1}:$PORT:$PORT'
     env_file:
       - ./.env
     volumes:
@@ -27,7 +27,7 @@ services:
       POSTGRES_PASSWORD: '$DB_PASS'
       POSTGRES_DB: '$DB_NAME'
     ports:
-      - '$DB_PORT:$DB_PORT'
+      - '127.0.0.1:$DB_PORT:$DB_PORT'
     volumes:
       - pgdata:/var/lib/postgresql/data
 
