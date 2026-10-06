@@ -1,5 +1,6 @@
 import os from 'os'
 import { join } from 'path'
+import { warnIfNativeBinaryStale } from './native-staleness'
 
 const platform = os.platform()
 
@@ -23,12 +24,22 @@ export const getNativeBinaryPath = (
     )
     return null
   }
-  return join(targetDir, binaryName)
+  const binaryPath = join(targetDir, binaryName)
+  if (getIsDev()) {
+    warnIfNativeBinaryStale(
+      nativeModuleName,
+      binaryPath,
+      join(getDevNativeDir(), nativeModuleName),
+    )
+  }
+  return binaryPath
 }
+
+const getDevNativeDir = (): string => join(__dirname, '../../native')
 
 const getTargetDir = (): string | null => {
   if (getIsDev()) {
-    const targetBase = join(__dirname, '../../native/target')
+    const targetBase = join(getDevNativeDir(), 'target')
 
     if (platform === 'darwin') {
       // Detect current architecture
