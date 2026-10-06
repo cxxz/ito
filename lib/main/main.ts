@@ -57,16 +57,21 @@ import { teardown } from './teardown'
 import { historyRetentionService } from './historyRetention'
 
 // Handle HTTP/2 session errors gracefully without showing pop-up
-// These errors can occur when the gRPC connection to the server dies unexpectedly
+// These errors can occur when the gRPC connection to the server dies unexpectedly.
+// connect-node can drop its 'error' listener from a session that nghttp2 has
+// already destroyed but not yet closed (e.g. a TLS-inspecting proxy answering the
+// HTTP/2 preface with HTTP/1.1 -> ERR_HTTP2_ERROR "Protocol error"), so the
+// session's late 'error' event surfaces here. It is never fatal to the app.
 process.on('uncaughtException', (error: Error) => {
   const errorCode = (error as NodeJS.ErrnoException).code
-  // Check if this is an HTTP/2 frame error
   if (
-    errorCode === 'ERR_HTTP2_TOO_MANY_INVALID_FRAMES' ||
+    errorCode?.startsWith('ERR_HTTP2_') ||
     error.message?.includes('ERR_HTTP2_TOO_MANY_INVALID_FRAMES') ||
     error.message?.includes('Too many invalid HTTP/2 frames')
   ) {
-    console.log('[Main] HTTP/2 session error caught, resetting gRPC connection')
+    console.warn(
+      `[Main] HTTP/2 session error caught (${errorCode ?? 'unknown'}: ${error.message}), resetting gRPC connection`,
+    )
     grpcClient.abortSession(error.message)
     return // Don't re-throw, prevents pop-up
   }
