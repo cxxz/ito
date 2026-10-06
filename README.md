@@ -150,12 +150,22 @@ with a local Keychain certificate and notarization profile. See
 selection, and resuming notarization without rebuilding. This release flow keeps
 API credentials out of the installer; configure them in **Settings → Server**.
 
+### Windows installer
+
+On Windows, run `bun run build:win:local` from PowerShell to build the native
+helpers, compile the app, and create an unsigned installer at
+`dist\Ito-<version>.exe`, without Docker or bash. It uses the version in
+`package.json` and includes `VITE_ITO_API_BASE_URL` as the default server URL,
+but leaves the API key out; users enter it in **Settings → Server**. See
+[Windows native build setup](docs/WIN_INSTALL.md#building-the-application) for
+prerequisites and options (`-ServerUrl`, `-NoServerUrl`, `-SkipNativeBuild`, `-EmbedApiKey`).
+
 ### Build Requirements
 
 #### All Platforms
 
 - **Rust**: Install via [rustup.rs](https://rustup.rs/)
-  - **Windows users**: See Windows-specific instructions below for GNU toolchain setup
+  - **Windows users**: The default MSVC toolchain is enough for `bun run build:win:local`; the GNU setup below is only for the Docker-based `bun run build:win`
   - **macOS/Linux users**: Default installation is sufficient
 
 #### macOS
@@ -163,6 +173,12 @@ API credentials out of the installer; configure them in **Settings → Server**.
 - **Xcode Command Line Tools**: `xcode-select --install`
 
 #### Windows
+
+To build on Windows itself with `bun run build:win:local`, you only need Visual
+Studio Build Tools (Desktop development with C++), Rust with the default MSVC
+toolchain, Node.js, and Bun. See [Windows native build setup](docs/WIN_INSTALL.md).
+
+The steps below are only for the Docker-based `bun run build:win` flow.
 
 **Required Setup:**
 
@@ -272,7 +288,8 @@ bun run dev:rust           # Build Rust components and start dev
 
 # Building Application
 bun run build:mac          # Build for macOS
-bun run build:win          # Build for Windows
+bun run build:win          # Build for Windows (bash + Docker)
+bun run build:win:local    # Build a Windows installer natively on Windows (PowerShell)
 ./build-app.sh mac          # Build macOS using build script
 ./build-app.sh windows      # Build Windows using build script
 

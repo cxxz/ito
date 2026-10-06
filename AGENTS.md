@@ -26,7 +26,8 @@ Main development branch: `dev`
 - Server (run from `server/`):
   - Local dev: `bun install` → `bun local-db-up` (starts Postgres) → `bun db:migrate` → `bun dev` (tsx watch with hot reload)
   - Full stack via Docker: `bun docker` (equivalent to `docker compose up --build`)
-- Build: `bun build:mac` or `bun build:win`
+- Build: `bun build:mac` or `bun build:win` (bash + Docker)
+  - Windows installer built natively on Windows: `bun build:win:local` (`scripts/create_dist_exe.ps1`). It builds the MSVC native binaries and a `prod` app using the version in `package.json`, and writes `dist\Ito-<version>.exe`. The default server URL comes from `VITE_ITO_API_BASE_URL`; the API key is left out (`-EmbedApiKey` includes it). Other options: `-ServerUrl <url>`, `-NoServerUrl`, `-SkipNativeBuild`. See `docs/WIN_INSTALL.md`.
 - Test: `bun runAllTests` (runs lib, server, app, and native tests)
   - Lib tests: `bun runLibTests`
   - Server tests: `bun runServerTests`
@@ -159,7 +160,11 @@ Native tests and builds are integrated into the existing CI workflows:
 ## Troubleshooting
 
 - **"Transcription failed" after ~5s; log shows "Microphone did not become ready and produce audio", then "Cannot send command, process not running" and "Audio recorder drain timed out"**: almost always a stale `audio-recorder` binary that predates `recording-ready` / `drain-complete`. Look for the `[native] ... older than its source` warning, then rebuild native binaries.
-- **Windows build fails with `failed to remove file ...\audio-recorder.exe` / "Access is denied (os error 5)"**: orphaned helper processes from earlier dev sessions are locking the exe. Check with `tasklist /FI "IMAGENAME eq audio-recorder.exe"` and stop them with `taskkill /F /IM audio-recorder.exe`, then rebuild.
+- **Windows build fails with `failed to remove file ...\audio-recorder.exe` / "Access is denied (os error 5)"**: orphaned helper processes from earlier dev sessions are locking the exe. Check with `tasklist /FI "IMAGENAME eq audio-recorder.exe"` and stop them with `taskkill /F /IM audio-recorder.exe`, then rebuild. `bun build:win:local` stops these leftover dev helpers automatically.
+- **`build-binaries.ps1` fails in `cargo fetch` with "no token found for `<registry>`"**: the script sets `CARGO_HOME` to `native\.cargo-home`, which can't see registry mirrors or proxy tokens configured in the user's Cargo config. Run `cargo build --release --target x86_64-pc-windows-msvc` in `native/` instead (`bun build:win:local` does this).
+- **Running electron-builder by hand on Windows fails**: `bun build:win:local` handles both of these causes.
+  - **"This project is configured to use yarn" from `pnpm config list`**: `PNPM_HOME` in the environment makes electron-builder choose pnpm. Clear it for the build.
+  - **winCodeSign "Cannot create symbolic link ... A required privilege is not held"**: the archive contains macOS symlinks that need admin rights or Developer Mode. Extract it into the electron-builder cache once without the `darwin` folder.
 - **`[Main] HTTP/2 session error caught (ERR_HTTP2_...)`**: `lib/main/main.ts` handles every `ERR_HTTP2_*` `uncaughtException` by resetting the gRPC session instead of crashing. These can surface late from sessions connect-node already dropped (e.g. a TLS-inspecting proxy answering the HTTP/2 preface with HTTP/1.1). It's not fatal, but repeated occurrences point at the network path to the server.
 
 ## Code Style Preferences

@@ -194,9 +194,9 @@ v20.11.0
 
 ## Building the Application
 
-Once all dependencies are installed, you can build Ito:
+Once all dependencies are installed, build the installer from PowerShell:
 
-```bash
+```powershell
 # Clone the repository (if not already done)
 git clone https://github.com/heyito/ito.git
 cd ito
@@ -208,20 +208,30 @@ bun install
 cp .env.example .env
 # Edit .env to set VITE_ITO_API_BASE_URL to your remote server URL
 
-# Build native Rust binaries
-./build-binaries.sh --windows
-
-# Build native Rust binaries (PowerShell)
-./build-binaries.ps1 -Windows
-
-# Build the Electron app
-bun run electron-vite build
-
-# Create Windows installer
-bunx electron-builder --config electron-builder.config.js --win --x64 --publish=never
+# Build the native helpers, compile the app and create the installer
+bun run build:win:local
 ```
 
-The installer will be created in the `dist/` directory.
+The installer is created at `dist\Ito-<version>.exe`, and `dist\Ito-<version>.zip` contains a version that runs without installing. The script (`scripts/create_dist_exe.ps1`):
+
+- Builds the Rust helpers with `cargo build --release --target x86_64-pc-windows-msvc`. It stops any helpers left running by a dev session first, because they lock their `.exe` files.
+- Builds a `prod` app using the version in `package.json`. Bump the version there before building a release.
+- Builds in `VITE_ITO_API_BASE_URL` (from the environment or `.env`) as the default server URL.
+- Leaves the API key **out** of the installer, and checks the compiled app to make sure the key from `.env` isn't in it. Users enter the key once in **Settings → Server**.
+- Leaves the installer unsigned, so Windows SmartScreen shows a warning. Choose **More info → Run anyway**.
+
+Options (they can follow `bun run build:win:local` directly):
+
+| Option | Effect |
+|--------|--------|
+| `-ServerUrl https://ito.example.com` | Build in a different default server URL. |
+| `-NoServerUrl` | Build without a default server URL; users enter it in **Settings → Server**. |
+| `-SkipNativeBuild` | Reuse the existing native binaries, e.g. when only TypeScript code changed. |
+| `-EmbedApiKey` | Build in `VITE_ITO_API_KEY` from `.env`. Anyone with the installer can extract it. |
+
+To rebuild after code changes: `git pull`, then `bun install` if `package.json` or `bun.lock` changed, bump the version in `package.json`, and run `bun run build:win:local` again.
+
+`bun run build:win` is a different flow: it runs `build-app.sh` through bash and packages inside Docker.
 
 ---
 
@@ -230,6 +240,18 @@ The installer will be created in the `dist/` directory.
 ### "MSVC not found" errors during Rust build
 
 Ensure Visual Studio Build Tools is installed with the "Desktop development with C++" workload. You may need to restart your terminal after installation.
+
+### `cargo fetch` fails with "no token found" for a registry (`build-binaries.ps1`)
+
+`build-binaries.ps1` points `CARGO_HOME` at `native\.cargo-home`, so it can't see registry mirrors or proxy tokens set up in your user Cargo config, such as a corporate package proxy. `bun run build:win:local` runs plain `cargo build` with your normal Cargo config.
+
+### electron-builder: "Cannot create symbolic link: A required privilege is not held by the client"
+
+electron-builder's `winCodeSign` download contains macOS symlinks, which Windows only lets administrators or Developer Mode create. `bun run build:win:local` extracts it once without those files into `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign\winCodeSign-2.6.0`. If you run electron-builder by hand, enable Developer Mode or run the build script once first.
+
+### electron-builder: "This project is configured to use yarn" from `pnpm config list`
+
+electron-builder decides which package manager to call from environment variables, and `PNPM_HOME` makes it choose pnpm. The build script removes `PNPM_HOME` for the duration of the build. If you run electron-builder by hand, clear it first (`Remove-Item Env:PNPM_HOME`).
 
 ### "rustup: command not found"
 
