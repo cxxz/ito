@@ -12,7 +12,7 @@ export const DEFAULT_ADVANCED_SETTINGS = {
 
   // LLM (Large Language Model) settings
   llmProvider: 'cerebras',
-  llmModel: 'qwen-3-235b-a22b-instruct-2507',
+  llmModel: 'qwen-3.8-27b',
   llmTemperature: 1,
   llmBaseUrl: '',
 

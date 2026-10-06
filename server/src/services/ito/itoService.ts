@@ -107,7 +107,7 @@ function dbToAdvancedSettingsPb(
 
   // Backwards-compat: if we have a legacy default ASR model stored (from before
   // "NULL means use defaults"), treat it as unset so provider-specific defaults
-  // (e.g. aliyun -> qwen3-asr-flash) can take effect.
+  // (e.g. aliyun -> qwen-audio-3.1-asr-flash) can take effect.
   if (asrModel === DEFAULT_ADVANCED_SETTINGS.asrModel) {
     const currentProvider = resolvedDefaults.asrProvider
     const legacyDefaultProvider = DEFAULT_ADVANCED_SETTINGS.asrProvider

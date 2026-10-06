@@ -19,7 +19,7 @@ const ALIYUN_API_URL =
   'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
 const QWENCLOUD_API_URL =
   'https://maas.qwencloudapi.com/api/v1/services/aigc/multimodal-generation/generation'
-const DEFAULT_ASR_MODEL = 'qwen3-asr-flash'
+const DEFAULT_ASR_MODEL = 'qwen-audio-3.1-asr-flash'
 
 export const itoVocabulary = ['LLM', 'Claude']
 

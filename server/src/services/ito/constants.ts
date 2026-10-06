@@ -28,7 +28,7 @@ export function getDefaultAsrProvider(): string {
 export function getProviderDefaultAsrModels(): Record<string, string> {
   return {
     groq: getNonEmptyEnv('GROQ_DEFAULT_ASR_MODEL') ?? 'whisper-large-v3-turbo',
-    aliyun: getNonEmptyEnv('ALIYUN_DEFAULT_ASR_MODEL') ?? 'qwen3-asr-flash',
+    aliyun: getNonEmptyEnv('ALIYUN_DEFAULT_ASR_MODEL') ?? 'qwen-audio-3.1-asr-flash',
     openai: getNonEmptyEnv('OPENAI_DEFAULT_ASR_MODEL') ?? 'whisper-1',
   }
 }
@@ -65,7 +65,7 @@ export function getProviderDefaultLlmModels(): Record<string, string> {
       getNonEmptyEnv('GROQ_DEFAULT_LLM') ?? 'moonshotai/kimi-k2-instruct-0905',
     cerebras:
       getNonEmptyEnv('CEREBRAS_DEFAULT_LLM') ??
-      'qwen-3-235b-a22b-instruct-2507',
+      'qwen-3.8-27b',
   }
 }
 

@@ -269,13 +269,13 @@ The store uses default model mappings per provider (matching server-side constan
 ```typescript
 const LLM_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   groq: 'moonshotai/kimi-k2-instruct-0905',
-  cerebras: 'qwen-3-235b-a22b-instruct-2507',
+  cerebras: 'qwen-3.8-27b',
   openai: 'gpt-5-mini',
 }
 
 const ASR_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   groq: 'whisper-large-v3-turbo',
-  aliyun: 'qwen3-asr-flash',
+  aliyun: 'qwen-audio-3.1-asr-flash',
 }
 ```
 

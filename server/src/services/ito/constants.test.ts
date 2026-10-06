@@ -17,7 +17,7 @@ describe('getDefaultAdvancedSettingsStruct', () => {
 
       const defaults = getDefaultAdvancedSettingsStruct()
       expect(defaults.asrProvider).toBe('aliyun')
-      expect(defaults.asrModel).toBe('qwen3-asr-flash')
+      expect(defaults.asrModel).toBe('qwen-audio-3.1-asr-flash')
     } finally {
       if (originalProvider === undefined) delete process.env.ASR_PROVIDER
       else process.env.ASR_PROVIDER = originalProvider

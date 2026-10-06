@@ -63,7 +63,7 @@ describe('AliyunClient', () => {
 
       const audioBuffer = Buffer.from('mock audio data')
       const result = await aliyunClient!.transcribeAudio(audioBuffer, {
-        asrModel: 'qwen3-asr-flash',
+        asrModel: 'qwen-audio-3.1-asr-flash',
       })
 
       expect(result).toBe('Hello world')
@@ -80,7 +80,7 @@ describe('AliyunClient', () => {
       })
 
       const body = JSON.parse(options.body as string)
-      expect(body.model).toBe('qwen3-asr-flash')
+      expect(body.model).toBe('qwen-audio-3.1-asr-flash')
       expect(body.input.messages).toHaveLength(2)
       expect(body.input.messages[0].role).toBe('system')
       expect(body.input.messages[1].role).toBe('user')
@@ -240,7 +240,7 @@ describe('AliyunClient', () => {
 
       const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
       const body = JSON.parse(options.body as string)
-      expect(body.model).toBe('qwen3-asr-flash')
+      expect(body.model).toBe('qwen-audio-3.1-asr-flash')
     })
 
     it('should trim whitespace from transcription result', async () => {
@@ -264,7 +264,7 @@ describe('AliyunClient', () => {
 
       const audioBuffer = Buffer.from('mock audio data')
       const result = await aliyunClient!.transcribeAudio(audioBuffer, {
-        asrModel: 'qwen3-asr-flash',
+        asrModel: 'qwen-audio-3.1-asr-flash',
       })
 
       expect(result).toBe('Hello world')
@@ -281,7 +281,7 @@ describe('AliyunClient', () => {
 
       await expect(
         aliyunClient!.transcribeAudio(audioBuffer, {
-          asrModel: 'qwen3-asr-flash',
+          asrModel: 'qwen-audio-3.1-asr-flash',
         }),
       ).rejects.toThrow('API request failed: 401')
     })
@@ -301,7 +301,7 @@ describe('AliyunClient', () => {
 
       await expect(
         aliyunClient!.transcribeAudio(audioBuffer, {
-          asrModel: 'qwen3-asr-flash',
+          asrModel: 'qwen-audio-3.1-asr-flash',
         }),
       ).rejects.toThrow('Invalid API key provided')
     })
@@ -322,7 +322,7 @@ describe('AliyunClient', () => {
 
       await expect(
         aliyunClient!.transcribeAudio(audioBuffer, {
-          asrModel: 'qwen3-asr-flash',
+          asrModel: 'qwen-audio-3.1-asr-flash',
         }),
       ).rejects.toThrow('No transcription text in response')
     })
@@ -348,7 +348,7 @@ describe('AliyunClient', () => {
 
       const audioBuffer = Buffer.from('test audio content')
       await aliyunClient!.transcribeAudio(audioBuffer, {
-        asrModel: 'qwen3-asr-flash',
+        asrModel: 'qwen-audio-3.1-asr-flash',
       })
 
       const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]

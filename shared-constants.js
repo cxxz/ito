@@ -15,7 +15,7 @@ const DEFAULT_ADVANCED_SETTINGS = {
   // llmTemperature: 0.1,
 
   llmProvider: 'cerebras',
-  llmModel: 'qwen-3-235b-a22b-instruct-2507',
+  llmModel: 'qwen-3.8-27b',
   llmTemperature: 1.0,
   llmBaseUrl: '',
 
@@ -199,7 +199,7 @@ EXAMPLE 3 — Summarize
   // Polish mode settings for TRANSCRIBE
   polishEnabled: false,
   polishLlmProvider: 'cerebras',
-  polishLlmModel: 'zai-glm-4.6',
+  polishLlmModel: 'qwen-3.8-27b',
   polishLlmTemperature: 1.0,
 }
 

@@ -35,13 +35,13 @@ const urlLengthLimit = 256
 const FALLBACK_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-5-mini',
   groq: 'moonshotai/kimi-k2-instruct-0905',
-  cerebras: 'qwen-3-235b-a22b-instruct-2507',
+  cerebras: 'qwen-3.8-27b',
 }
 
 // Provider-specific default ASR models
 const FALLBACK_ASR_PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   groq: 'whisper-large-v3-turbo',
-  aliyun: 'qwen3-asr-flash',
+  aliyun: 'qwen-audio-3.1-asr-flash',
   openai: 'whisper-1',
 }
 

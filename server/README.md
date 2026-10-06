@@ -41,12 +41,12 @@ ALIYUN_API_KEY=your_aliyun_api_key_here
 # Optional: ASR defaults (affects app "Settings > Advanced" defaults)
 ASR_PROVIDER="groq"  # Options: groq, aliyun
 GROQ_DEFAULT_ASR_MODEL=""    # defaults to whisper-large-v3-turbo
-ALIYUN_DEFAULT_ASR_MODEL=""  # defaults to qwen3-asr-flash
+ALIYUN_DEFAULT_ASR_MODEL=""  # defaults to qwen-audio-3.1-asr-flash
 
 # Optional: default LLM models per provider (affects app "Settings > Advanced" defaults)
 OPENAI_DEFAULT_LLM=""   # defaults to gpt-4o-mini
 GROQ_DEFAULT_LLM=""     # defaults to moonshotai/kimi-k2-instruct-0905
-CEREBRAS_DEFAULT_LLM="" # defaults to qwen-3-235b-a22b-instruct-2507
+CEREBRAS_DEFAULT_LLM="" # defaults to qwen-3.8-27b
 
 # Optional: OpenAI-compatible base URL
 OPENAI_BASE_URL=""  # defaults to https://api.openai.com/v1
@@ -57,7 +57,7 @@ AUTH0_DOMAIN=your_auth0_domain.auth0.com
 AUTH0_AUDIENCE=http://localhost:3003
 ```
 
-To use `qwen-audio-3.1-asr-flash`, select it with the `aliyun` provider in the app or set `ALIYUN_DEFAULT_ASR_MODEL="qwen-audio-3.1-asr-flash"`. Configure `ALIYUN_API_KEY` with a key valid for QwenCloud. The client uses the [QwenCloud synchronous API](https://docs.qwencloud.com/developer-guides/speech/asr#synchronous-calls-qwen-audio-3x-asr-flashfun-asr-flash) for this model, sends WAV audio at 16 kHz, and passes dictionary entries as inline vocabulary. The default model remains `qwen3-asr-flash`.
+To use `qwen-audio-3.1-asr-flash`, select it with the `aliyun` provider in the app or set `ALIYUN_DEFAULT_ASR_MODEL="qwen-audio-3.1-asr-flash"`. Configure `ALIYUN_API_KEY` with a key valid for QwenCloud. The client uses the [QwenCloud synchronous API](https://docs.qwencloud.com/developer-guides/speech/asr#synchronous-calls-qwen-audio-3x-asr-flashfun-asr-flash) for this model, sends WAV audio at 16 kHz, and passes dictionary entries as inline vocabulary. The default model remains `qwen-audio-3.1-asr-flash`.
 
 ### 2. Get Required API Keys
 
@@ -203,10 +203,10 @@ bun run test-client      # Run gRPC client tests
 | `OPENAI_BASE_URL`          | No       | `https://api.openai.com/v1`        | OpenAI-compatible API base URL                    |
 | `ASR_PROVIDER`             | No       | `groq`                             | Default ASR provider (groq, aliyun)               |
 | `GROQ_DEFAULT_ASR_MODEL`   | No       | `whisper-large-v3-turbo`           | Default ASR model when ASR provider is `groq`     |
-| `ALIYUN_DEFAULT_ASR_MODEL` | No       | `qwen3-asr-flash`                  | Default ASR model when ASR provider is `aliyun`   |
+| `ALIYUN_DEFAULT_ASR_MODEL` | No       | `qwen-audio-3.1-asr-flash`                  | Default ASR model when ASR provider is `aliyun`   |
 | `OPENAI_DEFAULT_LLM`       | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`   |
 | `GROQ_DEFAULT_LLM`         | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`     |
-| `CEREBRAS_DEFAULT_LLM`     | No       | `qwen-3-235b-a22b-instruct-2507`   | Default LLM model when LLM provider is `cerebras` |
+| `CEREBRAS_DEFAULT_LLM`     | No       | `qwen-3.8-27b`   | Default LLM model when LLM provider is `cerebras` |
 | `REQUIRE_AUTH`             | No       | `false`                            | Enable Auth0 authentication                       |
 | `AUTH0_DOMAIN`             | No\*     | -                                  | Auth0 domain (\*required if auth enabled)         |
 | `AUTH0_AUDIENCE`           | No\*     | -                                  | Auth0 audience (\*required if auth enabled)       |
