@@ -23,7 +23,10 @@ import {
 } from './helpers.js'
 import {
   getDefaultAsrModel,
+  getDefaultAsrProvider,
   getDefaultLlmModel,
+  getDefaultPolishLlmModel,
+  getDefaultPolishLlmProvider,
   ITO_MODE_SYSTEM_PROMPT,
 } from './constants.js'
 import type { ItoContext } from './types.js'
@@ -317,7 +320,7 @@ export class TranscribeStreamHandler {
         error: errorToProtobuf(
           error,
           (mergedConfig.llmSettings?.asrProvider as any) ||
-            (DEFAULT_ADVANCED_SETTINGS.asrProvider as any),
+            (getDefaultAsrProvider() as any),
         ),
       })
     }
@@ -421,10 +424,11 @@ export class TranscribeStreamHandler {
   }
 
   private extractAsrConfig(mergedConfig: StreamConfig) {
-    // Client settings take precedence, then fall back to server default
+    // Client settings take precedence, then fall back to the same server
+    // default that GetAdvancedSettings reports to the app (ASR_PROVIDER).
     const asrProvider = this.resolveOrDefault(
       mergedConfig.llmSettings?.asrProvider,
-      DEFAULT_ADVANCED_SETTINGS.asrProvider,
+      getDefaultAsrProvider(),
     )
 
     // Determine the appropriate default model based on provider
@@ -482,19 +486,16 @@ export class TranscribeStreamHandler {
       DEFAULT_ADVANCED_SETTINGS.polishEnabled
     const polishLlmProvider = this.resolveOrDefault(
       mergedConfig.llmSettings?.polishLlmProvider,
-      DEFAULT_ADVANCED_SETTINGS.polishLlmProvider,
+      getDefaultPolishLlmProvider(),
     )
-    const defaultPolishLlmModel = getDefaultLlmModel(polishLlmProvider)
+    const defaultPolishLlmModel = getDefaultPolishLlmModel(polishLlmProvider)
 
     return {
       asrModel: this.resolveOrDefault(
         asrModel,
         DEFAULT_ADVANCED_SETTINGS.asrModel,
       ),
-      asrProvider: this.resolveOrDefault(
-        asrProvider,
-        DEFAULT_ADVANCED_SETTINGS.asrProvider,
-      ),
+      asrProvider: this.resolveOrDefault(asrProvider, getDefaultAsrProvider()),
       asrPrompt: this.resolveOrDefault(
         mergedConfig.llmSettings?.asrPrompt,
         DEFAULT_ADVANCED_SETTINGS.asrPrompt,

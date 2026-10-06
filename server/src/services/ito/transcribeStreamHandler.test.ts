@@ -11,10 +11,14 @@ import { kUser } from '../../auth/userContext.js'
 const transcribeAudio = mock(
   async (_audio?: Buffer, _options?: any) => 'hello world',
 )
-const adjustTranscript = mock(async () => 'Hello world.')
+const adjustTranscript = mock(
+  async (_prompt?: string, _options?: any) => 'Hello world.',
+)
+const getAsrProvider = mock((_provider: string) => ({ transcribeAudio }))
+const getLlmProvider = mock((_provider: string) => ({ adjustTranscript }))
 mock.module('../../clients/providerUtils.js', () => ({
-  getAsrProvider: () => ({ transcribeAudio }),
-  getLlmProvider: () => ({ adjustTranscript }),
+  getAsrProvider,
+  getLlmProvider,
 }))
 const persist = mock<(...args: any[]) => Promise<any>>(async () => ({}))
 mock.module('./interactionHelpers.js', () => ({
@@ -25,6 +29,8 @@ const { TranscribeStreamHandler } = await import('./transcribeStreamHandler.js')
 beforeEach(() => {
   transcribeAudio.mockClear()
   adjustTranscript.mockClear()
+  getAsrProvider.mockClear()
+  getLlmProvider.mockClear()
   persist.mockClear()
 })
 
@@ -141,4 +147,37 @@ test('records recognition and polishing latency independently', async () => {
   expect(timing.asrLatencyMs).toBeGreaterThanOrEqual(15)
   expect(timing.adjustmentLatencyMs).toBeGreaterThanOrEqual(35)
   expect(timing.durationMs).toBe(1000)
+})
+
+test('falls back to the server defaults the app displays when providers are unset', async () => {
+  const env = {
+    ASR_PROVIDER: 'openai',
+    OPENAI_DEFAULT_ASR_MODEL: 'Qwen3-ASR-1.7B',
+    POLISH_LLM_PROVIDER: 'groq',
+    POLISH_LLM_MODEL: 'custom-polish-model',
+  }
+  const original = Object.fromEntries(
+    Object.keys(env).map(key => [key, process.env[key]]),
+  )
+  Object.assign(process.env, env)
+  const responses = []
+  try {
+    for await (const response of new TranscribeStreamHandler().process(
+      requests(true),
+      context(),
+    ))
+      responses.push(response)
+  } finally {
+    for (const [key, value] of Object.entries(original)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+  expect(responses[responses.length - 1]?.transcript).toBe('Hello world.')
+  expect(getAsrProvider).toHaveBeenCalledWith('openai')
+  expect(transcribeAudio.mock.calls[0]?.[1]?.asrModel).toBe('Qwen3-ASR-1.7B')
+  expect(getLlmProvider).toHaveBeenCalledWith('groq')
+  expect(adjustTranscript.mock.calls[0]?.[1]?.model).toBe(
+    'custom-polish-model',
+  )
 })

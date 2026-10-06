@@ -4,9 +4,28 @@ import {
   getDefaultAdvancedSettingsStruct,
   getDefaultAsrModel,
   getDefaultLlmModel,
+  getDefaultPolishLlmModel,
   getProviderDefaultAsrModels,
   getProviderDefaultLlmModels,
 } from './constants.js'
+
+function withEnv(vars: Record<string, string | undefined>, run: () => void) {
+  const original = Object.fromEntries(
+    Object.keys(vars).map(key => [key, process.env[key]]),
+  )
+  const apply = (values: Record<string, string | undefined>) => {
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+  apply(vars)
+  try {
+    run()
+  } finally {
+    apply(original)
+  }
+}
 
 describe('getDefaultAdvancedSettingsStruct', () => {
   test('uses ASR_PROVIDER to override defaults and selects provider default model', () => {
@@ -70,6 +89,69 @@ describe('getDefaultAdvancedSettingsStruct', () => {
       if (originalDefault === undefined) delete process.env.CEREBRAS_DEFAULT_LLM
       else process.env.CEREBRAS_DEFAULT_LLM = originalDefault
     }
+  })
+
+  test('includes polish defaults so the app can display them', () => {
+    withEnv(
+      {
+        POLISH_LLM_PROVIDER: undefined,
+        POLISH_LLM_MODEL: undefined,
+        CEREBRAS_DEFAULT_LLM: undefined,
+      },
+      () => {
+        const defaults = getDefaultAdvancedSettingsStruct()
+        expect(defaults.polishEnabled).toBe(
+          DEFAULT_ADVANCED_SETTINGS.polishEnabled,
+        )
+        expect(defaults.polishLlmProvider).toBe(
+          DEFAULT_ADVANCED_SETTINGS.polishLlmProvider,
+        )
+        expect(defaults.polishLlmModel).toBe(
+          getDefaultLlmModel(DEFAULT_ADVANCED_SETTINGS.polishLlmProvider),
+        )
+        expect(defaults.polishLlmTemperature).toBe(
+          DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature,
+        )
+      },
+    )
+  })
+
+  test('uses POLISH_LLM_PROVIDER and POLISH_LLM_MODEL for polish defaults', () => {
+    withEnv(
+      { POLISH_LLM_PROVIDER: 'groq', POLISH_LLM_MODEL: 'custom-polish-model' },
+      () => {
+        const defaults = getDefaultAdvancedSettingsStruct()
+        expect(defaults.polishLlmProvider).toBe('groq')
+        expect(defaults.polishLlmModel).toBe('custom-polish-model')
+      },
+    )
+  })
+})
+
+describe('getDefaultPolishLlmModel', () => {
+  test('applies POLISH_LLM_MODEL only to the default polish provider', () => {
+    withEnv(
+      {
+        POLISH_LLM_PROVIDER: 'cerebras',
+        POLISH_LLM_MODEL: 'custom-polish-model',
+        GROQ_DEFAULT_LLM: undefined,
+      },
+      () => {
+        expect(getDefaultPolishLlmModel('cerebras')).toBe('custom-polish-model')
+        expect(getDefaultPolishLlmModel('groq')).toBe(getDefaultLlmModel('groq'))
+      },
+    )
+  })
+
+  test('falls back to the provider default LLM model when POLISH_LLM_MODEL is empty', () => {
+    withEnv(
+      { POLISH_LLM_PROVIDER: undefined, POLISH_LLM_MODEL: '   ' },
+      () => {
+        expect(getDefaultPolishLlmModel('cerebras')).toBe(
+          getDefaultLlmModel('cerebras'),
+        )
+      },
+    )
   })
 })
 

@@ -48,6 +48,10 @@ OPENAI_DEFAULT_LLM=""   # defaults to gpt-4o-mini
 GROQ_DEFAULT_LLM=""     # defaults to moonshotai/kimi-k2-instruct-0905
 CEREBRAS_DEFAULT_LLM="" # defaults to qwen-3.8-27b
 
+# Optional: polish defaults (affects app "Settings > Advanced" defaults)
+POLISH_LLM_PROVIDER=""  # defaults to cerebras
+POLISH_LLM_MODEL=""     # defaults to the polish provider's default LLM model
+
 # Optional: OpenAI-compatible base URL
 OPENAI_BASE_URL=""  # defaults to https://api.openai.com/v1
 
@@ -207,13 +211,15 @@ bun run test-client      # Run gRPC client tests
 | `OPENAI_DEFAULT_LLM`       | No       | `gpt-4o-mini`                      | Default LLM model when LLM provider is `openai`   |
 | `GROQ_DEFAULT_LLM`         | No       | `moonshotai/kimi-k2-instruct-0905` | Default LLM model when LLM provider is `groq`     |
 | `CEREBRAS_DEFAULT_LLM`     | No       | `qwen-3.8-27b`   | Default LLM model when LLM provider is `cerebras` |
+| `POLISH_LLM_PROVIDER`      | No       | `cerebras`                         | Default polish LLM provider                       |
+| `POLISH_LLM_MODEL`         | No       | provider default LLM model         | Default model for `POLISH_LLM_PROVIDER`           |
 | `REQUIRE_AUTH`             | No       | `false`                            | Enable Auth0 authentication                       |
 | `AUTH0_DOMAIN`             | No\*     | -                                  | Auth0 domain (\*required if auth enabled)         |
 | `AUTH0_AUDIENCE`           | No\*     | -                                  | Auth0 audience (\*required if auth enabled)       |
 
 ### How Defaults Show Up In The App
 
-- The server treats `ASR_PROVIDER` and provider-specific LLM defaults as **server-controlled defaults** that are returned via `GetAdvancedSettings`.
+- The server treats `ASR_PROVIDER`, `POLISH_LLM_PROVIDER`/`POLISH_LLM_MODEL`, and provider-specific LLM defaults as **server-controlled defaults** that are returned via `GetAdvancedSettings`. Transcription uses the same defaults whenever the app leaves a field unset, so the app always shows what actually runs.
 - In the app UI (**Settings → Advanced**):
   - Fields stored as `null` mean “use server defaults”.
   - Selecting an **LLM Provider** resets **LLM Model** to default; the displayed model comes from `OPENAI_DEFAULT_LLM` / `GROQ_DEFAULT_LLM` / `CEREBRAS_DEFAULT_LLM` when set, otherwise the built-in defaults.

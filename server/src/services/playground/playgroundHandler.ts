@@ -14,8 +14,10 @@ import { errorToProtobuf } from '../../clients/errors.js'
 import { createUserPromptWithContext } from '../ito/helpers.js'
 import { createPolishPrompt } from '../../prompts/polishPrompt.js'
 import {
-  getDefaultLlmModel,
   getDefaultAsrModel,
+  getDefaultAsrProvider,
+  getDefaultPolishLlmModel,
+  getDefaultPolishLlmProvider,
   ITO_MODE_SYSTEM_PROMPT,
 } from '../ito/constants.js'
 import { prepareAudioForTranscription } from '../../utils/audioProcessing.js'
@@ -49,10 +51,7 @@ export async function handlePlaygroundRun(
 
     // 2. Get ASR provider and transcribe
     // Priority: request > env var > default
-    const asrProvider =
-      request.asrProvider ||
-      process.env.ASR_PROVIDER ||
-      DEFAULT_ADVANCED_SETTINGS.asrProvider
+    const asrProvider = request.asrProvider || getDefaultAsrProvider()
     const asrModel =
       request.asrModel || getDefaultAsrModel(asrProvider)
     const asrClient = getAsrProvider(asrProvider)
@@ -83,9 +82,9 @@ export async function handlePlaygroundRun(
       polishedOutput = ''
     } else {
       const polishProvider =
-        request.polishLlmProvider || DEFAULT_ADVANCED_SETTINGS.polishLlmProvider
+        request.polishLlmProvider || getDefaultPolishLlmProvider()
       const polishModel =
-        request.polishLlmModel || getDefaultLlmModel(polishProvider)
+        request.polishLlmModel || getDefaultPolishLlmModel(polishProvider)
       const polishTemperature =
         request.polishLlmTemperature ??
         DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature
@@ -154,9 +153,9 @@ export async function handlePlaygroundPolish(
 
   try {
     const polishProvider =
-      request.polishLlmProvider || DEFAULT_ADVANCED_SETTINGS.polishLlmProvider
+      request.polishLlmProvider || getDefaultPolishLlmProvider()
     const polishModel =
-      request.polishLlmModel || getDefaultLlmModel(polishProvider)
+      request.polishLlmModel || getDefaultPolishLlmModel(polishProvider)
     const polishTemperature =
       request.polishLlmTemperature ??
       DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature
@@ -190,7 +189,7 @@ export async function handlePlaygroundPolish(
   } catch (error) {
     console.error('[Playground] Polish failed:', error)
     const polishProvider =
-      request.polishLlmProvider || DEFAULT_ADVANCED_SETTINGS.polishLlmProvider
+      request.polishLlmProvider || getDefaultPolishLlmProvider()
     return create(PlaygroundPolishResponseSchema, {
       polishedOutput: '',
       error: errorToProtobuf(error, polishProvider as any),

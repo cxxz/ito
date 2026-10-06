@@ -38,11 +38,29 @@ export function getDefaultAsrModel(asrProvider: string): string {
   return providerDefaults[asrProvider] ?? DEFAULT_ADVANCED_SETTINGS.asrModel
 }
 
+export function getDefaultPolishLlmProvider(): string {
+  return (
+    getNonEmptyEnv('POLISH_LLM_PROVIDER') ??
+    DEFAULT_ADVANCED_SETTINGS.polishLlmProvider
+  )
+}
+
+// POLISH_LLM_MODEL only applies to the server's default polish provider, so a
+// client that picks another provider still gets that provider's default model.
+export function getDefaultPolishLlmModel(polishLlmProvider: string): string {
+  if (polishLlmProvider === getDefaultPolishLlmProvider()) {
+    const model = getNonEmptyEnv('POLISH_LLM_MODEL')
+    if (model) return model
+  }
+  return getDefaultLlmModel(polishLlmProvider)
+}
+
 export function getDefaultAdvancedSettingsStruct() {
   const asrProvider = getDefaultAsrProvider()
   const asrModel = getDefaultAsrModel(asrProvider)
   const llmProvider = DEFAULT_ADVANCED_SETTINGS.llmProvider
   const llmModel = getDefaultLlmModel(llmProvider)
+  const polishLlmProvider = getDefaultPolishLlmProvider()
 
   return {
     asrModel,
@@ -55,6 +73,10 @@ export function getDefaultAdvancedSettingsStruct() {
     transcriptionPrompt: DEFAULT_ADVANCED_SETTINGS.transcriptionPrompt,
     editingPrompt: DEFAULT_ADVANCED_SETTINGS.editingPrompt,
     noSpeechThreshold: DEFAULT_ADVANCED_SETTINGS.noSpeechThreshold,
+    polishEnabled: DEFAULT_ADVANCED_SETTINGS.polishEnabled,
+    polishLlmProvider,
+    polishLlmModel: getDefaultPolishLlmModel(polishLlmProvider),
+    polishLlmTemperature: DEFAULT_ADVANCED_SETTINGS.polishLlmTemperature,
   }
 }
 
