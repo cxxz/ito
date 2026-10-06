@@ -3,6 +3,7 @@ import { ConnectError, Code } from '@connectrpc/connect'
 import type { HandlerContext } from '@connectrpc/connect'
 import {
   ContextInfo,
+  InteractionSchema,
   ItoMode,
   StreamConfig,
   StreamConfigSchema,
@@ -112,7 +113,7 @@ export class TranscribeStreamHandler {
       const fullAudioWAV = interactionId
         ? await serverTimingCollector.timeAsync(
             ServerTimingEventName.AUDIO_PROCESSING,
-            () => prepareAudioForTranscription(fullAudio),
+            async () => prepareAudioForTranscription(fullAudio),
             interactionId,
           )
         : prepareAudioForTranscription(fullAudio)
@@ -170,6 +171,9 @@ export class TranscribeStreamHandler {
 
       const duration = Date.now() - startTime
 
+      let interaction: TranscribeStreamResponse['interaction']
+      let persistence: Promise<unknown> = Promise.resolve()
+
       // Create interaction in database if we have a user ID
       if (!userId) {
         console.error(
@@ -179,6 +183,9 @@ export class TranscribeStreamHandler {
         try {
           // Generate interaction ID if not provided by client
           const finalInteractionId = interactionId || uuidv4()
+          const audioDurationMs = Math.floor(
+            (fullAudio.length * 1000) / (16000 * 2),
+          )
 
           // Generate a meaningful title from the raw ASR transcript
           const title =
@@ -190,7 +197,7 @@ export class TranscribeStreamHandler {
           const asrOutput = JSON.stringify({
             transcript: originalTranscript,
             timestamp: new Date().toISOString(),
-            durationMs: duration,
+            durationMs: audioDurationMs,
           })
 
           // Create LLM output object
@@ -218,14 +225,28 @@ export class TranscribeStreamHandler {
             }
           }
 
-          // Use shared helper to create interaction
-          await createInteractionWithAudio({
+          const now = new Date().toISOString()
+          interaction = create(InteractionSchema, {
+            id: finalInteractionId,
+            userId,
+            title,
+            asrOutput,
+            llmOutput: llmOutput ?? '',
+            durationMs: audioDurationMs,
+            createdAt: now,
+            updatedAt: now,
+          })
+          // Begin persistence before yielding the final response. It continues
+          // even if the desktop closes the response iterator after PHASE_COMPLETE.
+          persistence = createInteractionWithAudio({
             id: finalInteractionId,
             userId,
             title,
             asrOutput,
             llmOutput,
-            durationMs: duration,
+            durationMs: audioDurationMs,
+          }).catch(error => {
+            console.error('Failed to persist completed interaction:', error)
           })
         } catch (error) {
           console.error('Failed to create interaction:', error)
@@ -244,10 +265,17 @@ export class TranscribeStreamHandler {
         `✅ [${new Date().toISOString()}] TranscribeStream completed in ${duration}ms`,
       )
 
-      yield create(TranscribeStreamResponseSchema, {
-        phase: TranscribePhase.PHASE_COMPLETE,
-        transcript,
-      })
+      try {
+        yield create(TranscribeStreamResponseSchema, {
+          phase: TranscribePhase.PHASE_COMPLETE,
+          transcript,
+          interaction,
+        })
+      } finally {
+        // Keep server history durable, including when the response is cancelled
+        // immediately after delivery. It does not gate desktop text insertion.
+        await persistence
+      }
     } catch (error: any) {
       // Clear timing on error
       if (interactionId) {

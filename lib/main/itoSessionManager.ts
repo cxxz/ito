@@ -18,6 +18,7 @@ type StreamResult = {
 }
 
 type Session = {
+  interactionId?: string
   mode: ItoMode
   phase: 'starting' | 'recording' | 'finishing'
   cancelled: boolean
@@ -84,6 +85,7 @@ export class ItoSessionManager {
       let interactionId = interactionManager.getCurrentInteractionId()
       if (interactionId) interactionManager.adoptInteractionId(interactionId)
       else interactionId = interactionManager.initialize()
+      session.interactionId = interactionId
       timingCollector.startInteraction()
       timingCollector.startTiming(TimingEventName.INTERACTION_ACTIVE)
       session.responsePromise = itoStreamController.startGrpcStream(phase => {
@@ -336,12 +338,26 @@ export class ItoSessionManager {
         await this.textInserter.insertText(textToInsert)
 
         // Create interaction in database
-        await interactionManager.upsertInteractionFromServer({
-          responseTranscript: response.transcript,
-          audioBuffer,
-          sampleRate,
-          mode: session.mode,
-        })
+        // Capture everything before releasing the session. Background history
+        // work must not read the next dictation's ID, audio, mode, or start time.
+        void interactionManager
+          .upsertInteractionFromServer({
+            interactionId: session.interactionId,
+            responseTranscript: response.transcript,
+            audioBuffer,
+            sampleRate,
+            durationMs: Math.floor(
+              (audioBuffer.length * 1000) / (sampleRate * 2),
+            ),
+            mode: session.mode,
+            serverInteraction: response.interaction,
+          })
+          .catch(error =>
+            console.error(
+              'Failed to synchronize transcription history:',
+              error,
+            ),
+          )
       } else {
         log.warn('[itoSessionManager] Skipping text insertion:', {
           hasTranscript: !!response.transcript,

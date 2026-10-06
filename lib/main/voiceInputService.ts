@@ -8,6 +8,7 @@ import log from 'electron-log'
 
 export class VoiceInputService {
   private stopPromise: Promise<void> | null = null
+  private restoreAudio = false
   public onRecordingError(listener: (error: Error) => void) {
     audioRecorderService.on('recording-error', listener)
     return () => {
@@ -28,7 +29,8 @@ export class VoiceInputService {
     // Mute system audio if needed
     if (settings.muteAudioWhenDictating) {
       console.log('[VoiceInputService] Muting system audio for dictation')
-      muteSystemAudio()
+      this.restoreAudio = true
+      await muteSystemAudio()
     }
 
     // Start audio recorder
@@ -36,7 +38,15 @@ export class VoiceInputService {
       '[VoiceInputService] Starting audio recorder with device:',
       deviceId,
     )
-    await audioRecorderService.startRecording(deviceId)
+    try {
+      await audioRecorderService.startRecording(deviceId)
+    } catch (error) {
+      if (this.restoreAudio) {
+        await unmuteSystemAudio()
+        this.restoreAudio = false
+      }
+      throw error
+    }
 
     console.log('[VoiceInputService] Audio recording started')
   }
@@ -66,8 +76,9 @@ export class VoiceInputService {
       console.log('[VoiceInputService] Drain complete')
     } finally {
       // Restore audio even if the recorder exits or its drain times out.
-      if (store.get(STORE_KEYS.SETTINGS).muteAudioWhenDictating) {
-        unmuteSystemAudio()
+      if (this.restoreAudio) {
+        await unmuteSystemAudio()
+        this.restoreAudio = false
       }
     }
 

@@ -1,94 +1,71 @@
-import { execSync } from 'child_process'
-import log from 'electron-log'
+import { execFile } from 'child_process'
 import os from 'os'
 
-let previousVolume: number | null = null
+// Serialize volume changes so a delayed mute cannot run after restoration.
+let pending: Promise<unknown> = Promise.resolve()
+let previous: { volume: number; muted: boolean } | null = null
 
-/**
- * Gets the current system volume (0-100)
- */
-export function getSystemVolume(): number | null {
-  if (os.platform() !== 'darwin') {
-    log.warn('System audio control is only supported on macOS')
-    return null
-  }
-
-  try {
-    const result = execSync(
-      'osascript -e "get volume settings" | grep -o "output volume:[0-9]*" | grep -o "[0-9]*"',
-      { encoding: 'utf8' },
+function runScript(script: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'osascript',
+      ['-e', script],
+      { timeout: 1000, encoding: 'utf8' },
+      (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
     )
-    return parseInt(result.trim(), 10)
-  } catch (error) {
-    log.error('Failed to get system volume:', error)
-    return null
-  }
+  })
 }
 
-/**
- * Sets the system volume (0-100)
- */
-export function setSystemVolume(volume: number): boolean {
-  if (os.platform() !== 'darwin') {
-    log.warn('System audio control is only supported on macOS')
-    return false
-  }
-
-  try {
-    execSync(
-      `osascript -e "set volume output volume ${Math.max(0, Math.min(100, volume))}"`,
-    )
-    return true
-  } catch (error) {
-    log.error('Failed to set system volume:', error)
-    return false
-  }
+function serialize<T>(operation: () => Promise<T>): Promise<T> {
+  const result = pending.then(operation)
+  pending = result.catch(() => {})
+  return result
 }
 
-/**
- * Mutes system audio and stores the previous volume
- */
-export function muteSystemAudio(): boolean {
-  if (os.platform() !== 'darwin') {
-    log.warn('System audio control is only supported on macOS')
-    return false
-  }
-
-  try {
-    // Store current volume before muting
-    previousVolume = getSystemVolume()
-    if (previousVolume !== null) {
-      console.log(`Muting system audio. Previous volume: ${previousVolume}`)
-      return setSystemVolume(0)
-    }
-    return false
-  } catch (error) {
-    log.error('Failed to mute system audio:', error)
-    return false
-  }
-}
-
-/**
- * Unmutes system audio and restores the previous volume
- */
-export function unmuteSystemAudio(): boolean {
-  if (os.platform() !== 'darwin') {
-    log.warn('System audio control is only supported on macOS')
-    return false
-  }
-
-  try {
-    if (previousVolume !== null) {
-      console.log(`Unmuting system audio. Restoring volume: ${previousVolume}`)
-      const success = setSystemVolume(previousVolume)
-      previousVolume = null // Clear stored volume
-      return success
-    } else {
-      log.warn('No previous volume stored, cannot unmute')
+export function muteSystemAudio(): Promise<boolean> {
+  return serialize(async () => {
+    if (os.platform() !== 'darwin') return false
+    if (previous) return true
+    try {
+      const result = await runScript(`
+        set settings to get volume settings
+        set oldVolume to output volume of settings
+        set oldMuted to output muted of settings
+        return (oldVolume as text) & "," & (oldMuted as text)
+      `)
+      const [volume, muted] = result.split(',')
+      if (
+        !Number.isFinite(Number(volume)) ||
+        !['true', 'false'].includes(muted)
+      )
+        throw new Error('Invalid system volume response')
+      previous = { volume: Number(volume), muted: muted === 'true' }
+      await runScript('set volume with output muted')
+      return true
+    } catch (error) {
+      console.error('Failed to mute system audio:', error)
       return false
     }
-  } catch (error) {
-    log.error('Failed to unmute system audio:', error)
-    return false
-  }
+  })
+}
+
+export function unmuteSystemAudio(): Promise<boolean> {
+  return serialize(async () => {
+    if (os.platform() !== 'darwin' || !previous) return false
+    const snapshot = previous
+    try {
+      // Preserve changes the user made during dictation, including volume changes.
+      await runScript(`
+        set settings to get volume settings
+        if (output muted of settings) and (output volume of settings = ${snapshot.volume}) then
+          set volume ${snapshot.muted ? 'with' : 'without'} output muted
+        end if
+      `)
+      previous = null
+      return true
+    } catch (error) {
+      console.error('Failed to restore system audio:', error)
+      return false
+    }
+  })
 }

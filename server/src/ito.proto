@@ -140,6 +140,8 @@ message TranscribeStreamResponse {
   TranscribePhase phase = 1;
   optional string transcript = 2;  // Only set when phase = PHASE_COMPLETE
   optional ClientError error = 3;
+  // Metadata for local history; audio remains on the desktop.
+  optional Interaction interaction = 4;
 }
 
 // Notes

@@ -170,19 +170,9 @@ export class GrpcClient {
       currentState,
     )
 
-    // For streaming operations, don't trust idle connections - they may be stale
-    // The server may have closed the connection without our knowledge (GOAWAY, timeout, etc.)
-    // Force a fresh connection to ensure reliability for long-running streams
-    if (currentState === 'error' || currentState === 'idle') {
-      console.log(
-        `[gRPC Client] Session in ${currentState} state, forcing fresh connection for stream`,
-      )
-      if (currentState === 'error') {
-        this.resetTransport('session error state')
-      } else {
-        this.sessionManager.abort()
-      }
-    }
+    // Idle means a healthy connection with no active requests. The manager's
+    // keepalive/GOAWAY handling decides when it needs a new socket.
+    if (currentState === 'error') this.resetTransport('session error state')
 
     // Establish a fresh connection
     try {
@@ -289,38 +279,25 @@ export class GrpcClient {
           signal,
         })
 
-        let finalResponse: TranscribeStreamResponse | null = null
         try {
           for await (const response of responseStream) {
             if (onPhaseUpdate) {
               onPhaseUpdate(response.phase)
             }
             if (response.phase === TranscribePhase.PHASE_COMPLETE) {
-              finalResponse = response
+              // The final transcript is ready; history persistence may still be
+              // finishing on the server. Closing the response iterator releases
+              // this request without waiting for unrelated database work.
+              return response
             }
           }
         } catch (error) {
           this.logSessionState('Stream error occurred')
-          // If we get an HTTP/2 error, abort the session to force a fresh connection next time
-          if (this.isHttp2Error(error)) {
-            console.log(
-              '[gRPC Client] HTTP/2 error detected, resetting transport after stream failure',
-            )
-            const reason =
-              error instanceof Error ? error.message : 'HTTP/2 error'
-            this.resetTransport(reason)
-          }
+          // withRetry resets failed transports once, without replaying audio.
           throw error
         }
 
-        this.logSessionState('Stream completed')
-
-        if (!finalResponse) {
-          throw new Error(
-            'No final response received from transcription stream',
-          )
-        }
-        return finalResponse
+        throw new Error('No final response received from transcription stream')
       },
       { retryOnHttp2Error: false },
     )

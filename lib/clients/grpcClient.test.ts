@@ -51,6 +51,11 @@ mock.module('../main/sqlite/repo', () => ({
 
 // Mock the entire gRPC stack to avoid network calls
 const mockGrpcClientMethods = {
+  transcribeStream: mock(() =>
+    (async function* () {
+      yield { phase: 0, transcript: 'hello' }
+    })(),
+  ),
   createNote: mock(() => Promise.resolve({ success: true } as any)),
   updateNote: mock(() => Promise.resolve({ success: true } as any)),
   deleteNote: mock(() => Promise.resolve({ success: true } as any)),
@@ -86,11 +91,16 @@ mock.module('@connectrpc/connect', () => ({
 
 const mockCreateConnectTransport = mock(() => ({}))
 const mockAbortSession = mock()
+const mockConnectSession = mock(async () => 'idle')
+let sessionState = 'idle'
 
 mock.module('@connectrpc/connect-node', () => ({
   createConnectTransport: mockCreateConnectTransport,
   Http2SessionManager: class MockHttp2SessionManager {
     abort = mockAbortSession
+    connect = mockConnectSession
+    state = () => sessionState
+    error = () => null
   },
 }))
 
@@ -149,9 +159,42 @@ describe('GrpcClient Business Logic Tests', () => {
     mockElectronWindow.webContents.send.mockClear()
     mockElectronWindow.isDestroyed.mockClear()
     mockSetFocusedText.mockClear()
+    mockAbortSession.mockClear()
+    mockConnectSession.mockClear()
+    sessionState = 'idle'
 
     // Reset default behaviors
     mockElectronWindow.isDestroyed.mockReturnValue(false)
+  })
+
+  test('reuses a healthy idle connection and returns the transcript before trailing history work', async () => {
+    let closed = false
+    mockGrpcClientMethods.transcribeStream.mockImplementationOnce(() =>
+      (async function* () {
+        try {
+          yield { phase: 0, transcript: 'ready' }
+          await new Promise(() => {})
+        } finally {
+          closed = true
+        }
+      })(),
+    )
+    const { GrpcClient } = await import('./grpcClient')
+    const result = await new GrpcClient().transcribeStream(
+      (async function* () {})(),
+    )
+    expect(result.transcript).toBe('ready')
+    expect(closed).toBe(true)
+    expect(mockAbortSession).not.toHaveBeenCalled()
+    expect(mockConnectSession).toHaveBeenCalledTimes(1)
+  })
+
+  test('replaces an errored HTTP/2 connection without replaying the audio stream', async () => {
+    sessionState = 'error'
+    const { GrpcClient } = await import('./grpcClient')
+    await new GrpcClient().transcribeStream((async function* () {})())
+    expect(mockAbortSession).toHaveBeenCalledTimes(1)
+    expect(mockGrpcClientMethods.transcribeStream).toHaveBeenCalledTimes(1)
   })
 
   describe('Authentication', () => {

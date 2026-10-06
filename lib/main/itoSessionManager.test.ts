@@ -80,6 +80,29 @@ const mockInteractionManager = {
   upsertInteractionFromServer: mock(() => Promise.resolve()),
   clearCurrentInteraction: mock(),
 }
+
+test('pending history synchronization does not keep processing active or capture the next session', async () => {
+  const history = Promise.withResolvers<void>()
+  mockInteractionManager.upsertInteractionFromServer.mockImplementationOnce(
+    () => history.promise,
+  )
+  const { ItoSessionManager } = await import('./itoSessionManager')
+  const session = new ItoSessionManager()
+  await session.startSession(ItoMode.TRANSCRIBE)
+  await session.completeSession()
+  expect(mockRecordingStateNotifier.notifyProcessingStopped).toHaveBeenCalled()
+  expect(
+    (mockInteractionManager.upsertInteractionFromServer.mock.calls as any[]).at(
+      -1,
+    )?.[0],
+  ).toMatchObject({
+    interactionId: 'test-interaction-123',
+    mode: ItoMode.TRANSCRIBE,
+  })
+  expect(await session.startSession(ItoMode.EDIT)).toBe('test-interaction-123')
+  history.resolve()
+  await session.cancelSession()
+})
 mock.module('./interactions/InteractionManager', () => ({
   interactionManager: mockInteractionManager,
 }))
@@ -337,6 +360,9 @@ describe('itoSessionManager', () => {
     expect(
       mockInteractionManager.upsertInteractionFromServer,
     ).toHaveBeenCalledWith({
+      interactionId: 'test-interaction-123',
+      durationMs: 0,
+      serverInteraction: undefined,
       responseTranscript: mockTranscript,
       audioBuffer: Buffer.from('audio-data'),
       sampleRate: 16000,

@@ -6,7 +6,10 @@ import { v4 as uuidv4 } from 'uuid'
 import { broadcastToAllWindows } from '../../window/broadcast'
 import { timingCollector } from '../timing/TimingCollector'
 import { grpcClient } from '../../clients/grpcClient'
-import { ItoMode } from '@/app/generated/ito_pb'
+import {
+  ItoMode,
+  type Interaction as InteractionPb,
+} from '@/app/generated/ito_pb'
 
 const parseJsonField = (value: string | undefined) => {
   if (!value) {
@@ -155,6 +158,7 @@ export class InteractionManager {
     sampleRate: number
     durationMs?: number
     mode: ItoMode
+    serverInteraction?: InteractionPb
   }) {
     const interactionId = params.interactionId ?? this.currentInteractionId
     if (!interactionId) {
@@ -176,7 +180,8 @@ export class InteractionManager {
           : 0)
 
       const serverInteraction =
-        await this.fetchInteractionFromServer(interactionId)
+        params.serverInteraction ??
+        (await this.fetchInteractionFromServer(interactionId))
 
       if (!serverInteraction) {
         console.warn(

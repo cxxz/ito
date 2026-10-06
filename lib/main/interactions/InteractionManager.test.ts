@@ -64,6 +64,33 @@ describe('InteractionManager', () => {
   })
 
   describe('Interaction Lifecycle', () => {
+    test('uses returned metadata without refetching or reading a replacement interaction ID', async () => {
+      mockGrpcClient.getInteraction.mockClear()
+      const original = interactionManager.initialize()
+      const serverInteraction = {
+        id: original,
+        userId: 'test-user-123',
+        title: 'original',
+        asrOutput: JSON.stringify({ transcript: 'raw' }),
+        llmOutput: '',
+        createdAt: '2026-10-06T10:00:00.000Z',
+        updatedAt: '2026-10-06T10:00:00.000Z',
+        durationMs: 1000,
+        deletedAt: '',
+      }
+      interactionManager.initialize()
+      await interactionManager.upsertInteractionFromServer({
+        interactionId: original,
+        responseTranscript: 'raw',
+        audioBuffer: Buffer.alloc(32000),
+        sampleRate: 16000,
+        durationMs: 1000,
+        mode: 0,
+        serverInteraction: serverInteraction as any,
+      })
+      expect(mockGrpcClient.getInteraction).not.toHaveBeenCalled()
+      expect((mockDbRun.mock.calls as any[]).at(-1)?.[1]?.[0]).toBe(original)
+    })
     test('should start interaction and generate ID', () => {
       const id = interactionManager.initialize()
 
